@@ -595,6 +595,44 @@ async def finish_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
     # Retourner au menu admin
     return await show_admin_menu(update, context)
 
+async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère la nouvelle valeur pour le champ en cours de modification"""
+    category = context.user_data.get('editing_category')
+    product_name = context.user_data.get('editing_product')
+    field = context.user_data.get('editing_field')
+    new_value = update.message.text
+
+    if not all([category, product_name, field]):
+        await update.message.reply_text("❌ Une erreur est survenue. Veuillez réessayer.")
+        return await show_admin_menu(update, context)
+
+    # Trouver et modifier le produit
+    for product in CATALOG.get(category, []):
+        if product['name'] == product_name:
+            old_value = product.get(field)
+            product[field] = new_value
+            save_catalog(CATALOG)
+
+            # Supprimer les messages précédents
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id - 1
+            )
+            await update.message.delete()
+
+            # Envoyer confirmation
+            keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"✅ Modification effectuée avec succès !\n\n"
+                     f"Ancien {field}: {old_value}\n"
+                     f"Nouveau {field}: {new_value}",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            break
+
+    return CHOOSING
+
 async def handle_contact_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du nom d'utilisateur de contact"""
     new_username = update.message.text.replace("@", "")
@@ -1465,44 +1503,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                         InlineKeyboardButton("🔙 Retour", callback_data="admin")
                     ]])
                 )
-
-async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gère la nouvelle valeur pour le champ en cours de modification"""
-    category = context.user_data.get('editing_category')
-    product_name = context.user_data.get('editing_product')
-    field = context.user_data.get('editing_field')
-    new_value = update.message.text
-
-    if not all([category, product_name, field]):
-        await update.message.reply_text("❌ Une erreur est survenue. Veuillez réessayer.")
-        return await show_admin_menu(update, context)
-
-    # Trouver et modifier le produit
-    for product in CATALOG.get(category, []):
-        if product['name'] == product_name:
-            old_value = product.get(field)
-            product[field] = new_value
-            save_catalog(CATALOG)
-
-            # Supprimer les messages précédents
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=update.message.message_id - 1
-            )
-            await update.message.delete()
-
-            # Envoyer confirmation
-            keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"✅ Modification effectuée avec succès !\n\n"
-                     f"Ancien {field}: {old_value}\n"
-                     f"Nouveau {field}: {new_value}",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            break
-
-    return CHOOSING
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler temporaire pour obtenir le file_id de l'image banner"""

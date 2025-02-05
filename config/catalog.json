@@ -1,54 +1,29 @@
 {
     "stats": {
-        "total_views": 3,
+        "total_views": 21,
         "category_views": {
-            "test 3": 2
+            "test 3": 13
         },
         "product_views": {
             "test 3": {
-                "Test modification": 1
+                "Test modification": 2,
+                "dddd": 3,
+                "test_modif_media": 3
             }
         },
-        "last_updated": "19:43:55",
+        "last_updated": "20:01:13",
         "last_reset": "2025-02-05"
     },
     "test 3": [
         {
-            "name": "Test modification",
-            "price": "dqzdqs",
-            "description": "Test modification",
+            "name": "test_modif_media",
+            "price": "fsfsdfsdf",
+            "description": "dfsdfsdf",
             "media": [
                 {
-                    "media_id": "AgACAgQAAxkBAAIFumeiSSrQnY9teW9CN-x3Zud59ntkAAJ1xDEbm-0ZUWLNKAudhRDgAQADAgADbQADNgQ",
-                    "media_type": "photo",
-                    "order_index": 1738691485
-                },
-                {
-                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
-                    "media_type": "photo",
-                    "order_index": 1738691488
-                },
-                {
-                    "media_id": "AgACAgQAAxkBAAIFvmeiSTolClbf4VPzjA4w_kGEn9h6AAJ3xDEbm-0ZUUqfQxZhslVtAQADAgADeQADNgQ",
-                    "media_type": "photo",
-                    "order_index": 1738691493
-                }
-            ]
-        },
-        {
-            "name": "dddd",
-            "price": "dddd",
-            "description": "dddd",
-            "media": [
-                {
-                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
+                    "media_id": "AgACAgQAAxkBAAIIVGejwc38oUlLxskXPEiR-9PWlRSmAAJUxzEbm-0hURoFyQpG86agAQADAgADeQADNgQ",
                     "media_type": "photo",
                     "order_index": 1
-                },
-                {
-                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
-                    "media_type": "photo",
-                    "order_index": 2
                 }
             ]
         }
