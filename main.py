@@ -432,7 +432,6 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await show_admin_menu(update, context)
 
 
-
 async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     example_message = (
         "🌟 *Bienvenue sur notre bot!* 🌟\n\n"
@@ -852,6 +851,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 ]])
             )
         return CHOOSING
+
+    elif query.data == "edit_welcome_message":
+        return await edit_welcome_message(update, context)
 
     elif query.data == "delete_product":
         keyboard = []
