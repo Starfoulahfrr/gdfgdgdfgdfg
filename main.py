@@ -193,6 +193,7 @@ EDITING_PRODUCT_FIELD = "EDITING_PRODUCT_FIELD"
 WAITING_NEW_VALUE = "WAITING_NEW_VALUE"
 WAITING_BROADCAST_MESSAGE = "WAITING_BROADCAST_MESSAGE"
 WAITING_BANNER_IMAGE = "WAITING_BANNER_IMAGE"
+WAITING_WELCOME_MESSAGE = "WAITING_WELCOME_MESSAGE"
 
 # Charger le catalogue au démarrage
 CATALOG = load_catalog()
@@ -326,6 +327,7 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📢 Envoyer une annonce", callback_data="start_broadcast")],
         [InlineKeyboardButton("👥 Gérer utilisateurs", callback_data="manage_users")],
         [InlineKeyboardButton("🖼️ Modifier image bannière", callback_data="edit_banner_image")],
+        [InlineKeyboardButton("📝 Modifier message d'accueil", callback_data="edit_welcome_message")],
         [InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")]
     ]
 
@@ -357,6 +359,20 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     return CHOOSING
+
+async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère la modification du message d'accueil"""
+    welcome_message = update.message.text
+
+    # Sauvegarder le message d'accueil dans la configuration
+    CONFIG['welcome_message'] = welcome_message
+
+    with open('config/config.json', 'w', encoding='utf-8') as f:
+        json.dump(CONFIG, f, indent=4)
+
+    await update.message.reply_text("✅ Message d'accueil mis à jour avec succès !")
+
+    return await show_admin_menu(update, context)
 
 async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout de l'image bannière"""
@@ -680,6 +696,25 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             ]])
         )
         return WAITING_BANNER_IMAGE
+
+
+    elif query.data == "edit_welcome_message":
+        example_message = (
+            "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
+            "Ceci n'est pas le produit final.\n"
+            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+            "📋 Cliquez sur MENU pour voir les catégories"
+        )
+        await query.message.edit_text(
+            f"📝 Exemple de message de bienvenue :\n\n{example_message}\n\n"
+            "Veuillez entrer votre nouveau message d'accueil :",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")
+            ]]),
+            parse_mode='Markdown'
+        )
+        return WAITING_WELCOME_MESSAGE
+
 
     elif query.data == "add_category":
         await query.message.edit_text(
@@ -1390,6 +1425,16 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             except:
                 pass
 
+                # Supprimer l'ancien message du menu des catégories
+        if 'categories_menu_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['categories_menu_message_id']
+                )
+            except:
+                pass
+
         # Nouveau clavier simplifié pour l'accueil
         keyboard = [
             [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
@@ -1791,6 +1836,10 @@ def main():
             ],
             WAITING_NEW_VALUE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_WELCOME_MESSAGE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_welcome_message),
                 CallbackQueryHandler(handle_normal_buttons),
             ],
             WAITING_BANNER_IMAGE: [
