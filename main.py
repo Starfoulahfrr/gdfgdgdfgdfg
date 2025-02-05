@@ -192,6 +192,7 @@ SELECTING_PRODUCT_TO_EDIT = "SELECTING_PRODUCT_TO_EDIT"
 EDITING_PRODUCT_FIELD = "EDITING_PRODUCT_FIELD"
 WAITING_NEW_VALUE = "WAITING_NEW_VALUE"
 WAITING_BROADCAST_MESSAGE = "WAITING_BROADCAST_MESSAGE"
+WAITING_BANNER_IMAGE = "WAITING_BANNER_IMAGE"
 
 # Charger le catalogue au démarrage
 CATALOG = load_catalog()
@@ -250,15 +251,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.extend([
         [
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+            InlineKeyboardButton("📝 Chat telegram", url="https://t.me/+YsJIgYjY8_cyYzBk"),
         ],
-        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
     ])
     
     welcome_text = (
-        "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-        "Ceci n'est pas le produit final.\n"
-        "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+        "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
+        "Parcourez notre menu en toutes tranquilité !\n"
+        "Ce bot est juste un bot MENU, nous ne prenons AUCUNE COMMANDES DESSUS.\n\n"
         "📋 Cliquez sur MENU pour voir les catégories"
     )
 
@@ -324,8 +325,8 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Modifier le contact", callback_data="edit_contact")],
         [InlineKeyboardButton("📢 Envoyer une annonce", callback_data="start_broadcast")],
         [InlineKeyboardButton("👥 Gérer utilisateurs", callback_data="manage_users")],
+        [InlineKeyboardButton("🖼️ Modifier image bannière", callback_data="edit_banner_image")],
         [InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")]
-
     ]
 
     admin_text = (
@@ -357,6 +358,23 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return CHOOSING
 
+async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère l'ajout de l'image bannière"""
+    if not update.message.photo:
+        await update.message.reply_text("Veuillez envoyer une photo.")
+        return WAITING_BANNER_IMAGE
+
+    # Obtenir l'ID du fichier de la photo
+    file_id = update.message.photo[-1].file_id
+    CONFIG['banner_image'] = file_id
+
+    # Sauvegarder la configuration
+    with open('config/config.json', 'w', encoding='utf-8') as f:
+        json.dump(CONFIG, f, indent=4)
+
+    await update.message.reply_text("✅ Image bannière mise à jour avec succès !")
+
+    return await show_admin_menu(update, context)
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
@@ -579,6 +597,7 @@ async def finish_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
     return await show_admin_menu(update, context)
 
 async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère la nouvelle valeur pour le champ en cours de modification"""
     category = context.user_data.get('editing_category')
     product_name = context.user_data.get('editing_product')
     field = context.user_data.get('editing_field')
@@ -644,6 +663,14 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
             return CHOOSING
 
+    elif query.data == "edit_banner_image":
+        await query.message.edit_text(
+            "📸 Veuillez envoyer la nouvelle image bannière :",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")
+            ]])
+        )
+        return WAITING_BANNER_IMAGE
 
     elif query.data == "add_category":
         await query.message.edit_text(
@@ -918,19 +945,19 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         contact_buttons = [
         [
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+            InlineKeyboardButton("📝 Chat telegram", url="https://t.me/+YsJIgYjY8_cyYzBk"),
         ],
-        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
     ]
         keyboard.extend(contact_buttons)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
        
         welcome_text = (
-            "🌿 *Bienvenue chez Green Attack* 🌿\n\n"
-            "Ceci n'est pas le produit final\n"
-            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
-            "📱 Cliquez sur MENU pour voir les catégories\n"
+            "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
+            "Parcourez notre menu en toutes tranquilité !\n"
+            "Ce bot est juste un bot MENU, *nous ne prenons AUCUNE COMMANDES DESSUS*.\n\n"
+            "📋 Cliquez sur *MENU* pour voir les catégories"
         )
         
         await query.edit_message_text(
@@ -1151,7 +1178,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 [InlineKeyboardButton("📝 Nom", callback_data="edit_name")],
                 [InlineKeyboardButton("💰 Prix", callback_data="edit_price")],
                 [InlineKeyboardButton("📝 Description", callback_data="edit_desc")],
-                [InlineKeyboardButton("🖼️ Photo/Vidéo", callback_data="edit_media")],
                 [InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]
             ]
             
@@ -1166,12 +1192,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             print(f"Erreur dans editp_: {e}")
             return await show_admin_menu(update, context)
 
-    elif query.data in ["edit_name", "edit_price", "edit_desc", "edit_media"]:
+    elif query.data in ["edit_name", "edit_price", "edit_desc"]:
         field_mapping = {
             "edit_name": "name",
             "edit_price": "price",
             "edit_desc": "description",
-            "edit_media": "media"
         }
         field = field_mapping[query.data]
         context.user_data['editing_field'] = field
@@ -1347,15 +1372,15 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard.extend([
             [
                 InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-                InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+                InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+YsJIgYjY8_cyYzBk"),
             ],
-            [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+            [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
         ])
         
         welcome_text = (
-            "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-            "Ceci n'est pas le produit final'.\n"
-            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+            "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
+            "Parcourez notre menu en toutes tranquilité !\n"
+            "Ce bot est juste un bot MENU, nous ne prenons AUCUNE COMMANDES DESSUS.\n\n"
             "📋 Cliquez sur MENU pour voir les catégories"
         )
         
@@ -1717,6 +1742,10 @@ def main():
             ],
             WAITING_NEW_VALUE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_BANNER_IMAGE: [
+                MessageHandler(filters.PHOTO, handle_banner_image),
                 CallbackQueryHandler(handle_normal_buttons),
             ],
             WAITING_PRODUCT_MEDIA: [
