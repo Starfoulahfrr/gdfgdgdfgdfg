@@ -369,6 +369,7 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du message d'accueil"""
     if await check_premium_emoji(update, context):
+        logger.info("Reprise après détection d'emoji premium dans handle_welcome_message.")
         return WAITING_WELCOME_MESSAGE
 
     welcome_message = update.message.text
@@ -386,6 +387,7 @@ async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ Une erreur s'est produite lors de la sauvegarde du message d'accueil.")
 
     await update.message.reply_text("✅ Message d'accueil mis à jour avec succès !")
+    logger.info("Message d'accueil mis à jour avec succès")
 
     return await show_admin_menu(update, context)
 
