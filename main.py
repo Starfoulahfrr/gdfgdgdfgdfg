@@ -417,9 +417,14 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def check_premium_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Vérifie si le message contient des emojis premium et envoie un message d'erreur le cas échéant"""
     message = update.message.text
+    logger.info(f"Vérification des emojis premium dans le message: {message}")
+    
     if contains_premium_emoji(message):
         await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
+        logger.info("Emojis premium détectés et message d'erreur envoyé")
         return True
+    
+    logger.info("Aucun emoji premium détecté")
     return False
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
