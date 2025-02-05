@@ -498,7 +498,7 @@ async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
     # Initialiser les données si elles n'existent pas
     if 'temp_product_media' not in context.user_data:
         context.user_data['temp_product_media'] = []
-    
+
     # Initialiser le compteur s'il n'existe pas
     if 'media_count' not in context.user_data:
         context.user_data['media_count'] = 0
@@ -1472,25 +1472,25 @@ async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product_name = context.user_data.get('editing_product')
     field = context.user_data.get('editing_field')
     new_value = update.message.text
-    
+
     if not all([category, product_name, field]):
         await update.message.reply_text("❌ Une erreur est survenue. Veuillez réessayer.")
         return await show_admin_menu(update, context)
-    
+
     # Trouver et modifier le produit
     for product in CATALOG.get(category, []):
         if product['name'] == product_name:
             old_value = product.get(field)
             product[field] = new_value
             save_catalog(CATALOG)
-            
+
             # Supprimer les messages précédents
             await context.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=update.message.message_id - 1
             )
             await update.message.delete()
-            
+
             # Envoyer confirmation
             keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
             await context.bot.send_message(
@@ -1501,7 +1501,7 @@ async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             break
-    
+
     return CHOOSING
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
