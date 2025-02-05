@@ -372,7 +372,14 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     with open('config/config.json', 'w', encoding='utf-8') as f:
         json.dump(CONFIG, f, indent=4)
 
-    await update.message.reply_text("✅ Image bannière mise à jour avec succès !")
+    # Supprimer le message contenant l'image
+    await update.message.delete()
+
+    # Envoyer le message de confirmation
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="✅ Image bannière mise à jour avec succès !"
+    )
 
     return await show_admin_menu(update, context)
 
