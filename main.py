@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import asyncio
 import shutil
@@ -363,12 +363,17 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du message d'accueil"""
     welcome_message = update.message.text
+    logger.info(f"Nouveau message d'accueil reçu: {welcome_message}")
 
     # Sauvegarder le message d'accueil dans la configuration
     CONFIG['welcome_message'] = welcome_message
 
-    with open('config/config.json', 'w', encoding='utf-8') as f:
-        json.dump(CONFIG, f, indent=4)
+    try:
+        with open('config/config.json', 'w', encoding='utf-8') as f:
+            json.dump(CONFIG, f, indent=4)
+        logger.info("Message d'accueil sauvegardé dans la configuration")
+    except Exception as e:
+        logger.error(f"Erreur lors de la sauvegarde du message d'accueil: {e}")
 
     await update.message.reply_text("✅ Message d'accueil mis à jour avec succès !")
 
@@ -1413,7 +1418,17 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     message_id=context.user_data['menu_message_id']
                 )
             except:
-                pass
+                logger.warning("Impossible de supprimer l'ancien message d'accueil")
+
+        # Supprimer l'ancien message du menu des catégories
+        if 'categories_menu_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['categories_menu_message_id']
+                )
+            except:
+                logger.warning("Impossible de supprimer l'ancien message du menu des catégories")
 
         # Supprimer l'ancienne image bannière
         if 'banner_message_id' in context.user_data:
@@ -1423,17 +1438,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     message_id=context.user_data['banner_message_id']
                 )
             except:
-                pass
-
-                # Supprimer l'ancien message du menu des catégories
-        if 'categories_menu_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=chat_id,
-                    message_id=context.user_data['categories_menu_message_id']
-                )
-            except:
-                pass
+                logger.warning("Impossible de supprimer l'ancienne image bannière")
 
         # Nouveau clavier simplifié pour l'accueil
         keyboard = [
@@ -1453,7 +1458,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
         ])
         
-        welcome_text = (
+        welcome_text = CONFIG.get('welcome_message', 
             "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
             "Ceci n'est pas le produit final.\n"
             "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
@@ -1480,7 +1485,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data['menu_message_id'] = menu_message.message_id
             
         except Exception as e:
-            print(f"Erreur lors du retour à l'accueil: {e}")
+            logger.error(f"Erreur lors du retour à l'accueil: {e}")
 
         return CHOOSING
 
