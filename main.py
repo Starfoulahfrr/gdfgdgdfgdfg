@@ -434,19 +434,35 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     example_message = (
-        "🌟 *Bienvenue sur notre bot!* 🌟\n\n"
-        "Voici comment vous pouvez formater votre texte :\n"
+        "🌟 *EXEMPLE MESSAGE DE BIENVENUE* 🌟\n\n"
+        "Bienvenue sur notre bot\\! Nous sommes ravis de vous avoir parmi nous\\.\n\n"
+        "Voici quelques instructions pour vous aider à démarrer :\n"
+        "1\\. *Explorez nos fonctionnalités*\n"
+        "   Découvrez toutes les options disponibles en cliquant sur le bouton MENU\\.\n"
+        "2\\. _Personnalisez votre expérience_\n"
+        "   Utilisez les commandes pour personnaliser votre interaction avec le bot\\.\n\n"
+        "### Formatage du texte\n"
+        "Vous pouvez formater votre texte de différentes manières :\n"
         "*Gras* : `*texte*`\n"
         "_Italique_ : `_texte_`\n"
         "__Souligné__ : `__texte__`\n"
         "~Barré~ : `~texte~`\n"
-        "Parcourez notre menu en toute tranquillité !\n"
-        "📋 Cliquez sur MENU pour voir les catégories"
+        "`Code` : \\`texte\\`\n\n"
+        "Utilisez ces options pour rendre vos messages plus expressifs et clairs\\.\n\n"
+        "Si vous avez des questions ou avez besoin d'aide, n'hésitez pas à nous contacter\\.\n\n"
+        "Parcourez notre menu en toute tranquillité\\! Nous espérons que vous apprécierez votre expérience avec notre bot\\.\n\n"
+        "📋 Cliquez sur MENU pour voir les catégories et commencer à explorer\\!"
     )
 
     await update.callback_query.edit_message_text(
-        f"📝 Exemple de message de bienvenue :\n\n{example_message}\n\n"
-        "Veuillez entrer votre nouveau message d'accueil :",
+        f"{example_message}\n\nVeuillez entrer votre nouveau message d'accueil \\(émojis prémium impossible\\) :",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]]),
+        parse_mode='MarkdownV2'
+    )
+    return WAITING_WELCOME_MESSAGE
+
+    await update.callback_query.edit_message_text(
+        f"{example_message}\n\nVeuillez entrer votre nouveau message d'accueil \\(émojis prémium impossible\\) :",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]]),
         parse_mode='MarkdownV2'
     )
