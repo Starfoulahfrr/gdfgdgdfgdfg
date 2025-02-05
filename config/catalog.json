@@ -1,15 +1,15 @@
 {
     "stats": {
-        "total_views": 44,
+        "total_views": 49,
         "category_views": {
-            "test 3": 28
+            "test 3": 32
         },
         "product_views": {
             "test 3": {
-                "test modif": 4
+                "test modif": 5
             }
         },
-        "last_updated": "22:05:33",
+        "last_updated": "22:16:10",
         "last_reset": "2025-02-05"
     },
     "test 3": [
