@@ -490,20 +490,16 @@ async def handle_product_description(update: Update, context: ContextTypes.DEFAU
 
 async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout des médias (photos ou vidéos) du produit"""
-    # Vérifier d'abord si nous avons une photo ou une vidéo
     if not (update.message.photo or update.message.video):
         await update.message.reply_text("Veuillez envoyer une photo ou une vidéo.")
         return WAITING_PRODUCT_MEDIA
 
-    # Initialiser les données si elles n'existent pas
     if 'temp_product_media' not in context.user_data:
         context.user_data['temp_product_media'] = []
 
-    # Initialiser le compteur s'il n'existe pas
     if 'media_count' not in context.user_data:
         context.user_data['media_count'] = 0
 
-    # Supprimer le message d'invitation précédent s'il existe
     if context.user_data.get('media_invitation_message_id'):
         try:
             await context.bot.delete_message(
@@ -514,7 +510,6 @@ async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             print(f"Erreur lors de la suppression du message d'invitation: {e}")
 
-    # Supprimer le message de confirmation précédent s'il existe
     if context.user_data.get('last_confirmation_message_id'):
         try:
             await context.bot.delete_message(
@@ -524,10 +519,8 @@ async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             print(f"Erreur lors de la suppression du message de confirmation: {e}")
 
-    # Incrémenter le compteur
     context.user_data['media_count'] += 1
 
-    # Déterminer le type de média et créer le nouveau média
     if update.message.photo:
         media_id = update.message.photo[-1].file_id
         media_type = 'photo'
@@ -535,20 +528,16 @@ async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
         media_id = update.message.video.file_id
         media_type = 'video'
 
-    # Créer le nouveau média
     new_media = {
         'media_id': media_id,
         'media_type': media_type,
         'order_index': context.user_data['media_count']
     }
 
-    # Ajouter le média à la liste temporaire
     context.user_data['temp_product_media'].append(new_media)
 
-    # Supprimer le message de l'utilisateur
     await update.message.delete()
 
-    # Envoyer le message de confirmation et sauvegarder son ID
     message = await update.message.reply_text(
         f"Photo/Vidéo {context.user_data['media_count']} ajoutée ! Cliquez sur Terminé pour valider :",
         reply_markup=InlineKeyboardMarkup([
@@ -556,7 +545,6 @@ async def handle_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")]
         ])
     )
-    # Sauvegarder l'ID du nouveau message de confirmation
     context.user_data['last_confirmation_message_id'] = message.message_id
 
     return WAITING_PRODUCT_MEDIA
@@ -569,7 +557,6 @@ async def finish_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
     if not category:
         return await show_admin_menu(update, context)
 
-    # Créer le nouveau produit
     new_product = {
         'name': context.user_data.get('temp_product_name'),
         'price': context.user_data.get('temp_product_price'),
@@ -577,26 +564,21 @@ async def finish_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
         'media': context.user_data.get('temp_product_media', [])
     }
 
-    # Ajouter le produit au catalogue
     if category not in CATALOG:
         CATALOG[category] = []
     CATALOG[category].append(new_product)
     save_catalog(CATALOG)
 
-    # Supprimer le message précédent
     try:
         await query.message.delete()
     except Exception as e:
         print(f"Erreur lors de la suppression du message: {e}")
 
-    # Nettoyer les données temporaires
     context.user_data.clear()
 
-    # Retourner au menu admin
     return await show_admin_menu(update, context)
 
 async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gère la nouvelle valeur pour le champ en cours de modification"""
     category = context.user_data.get('editing_category')
     product_name = context.user_data.get('editing_product')
     field = context.user_data.get('editing_field')
@@ -606,21 +588,18 @@ async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Une erreur est survenue. Veuillez réessayer.")
         return await show_admin_menu(update, context)
 
-    # Trouver et modifier le produit
     for product in CATALOG.get(category, []):
         if product['name'] == product_name:
             old_value = product.get(field)
             product[field] = new_value
             save_catalog(CATALOG)
 
-            # Supprimer les messages précédents
             await context.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=update.message.message_id - 1
             )
             await update.message.delete()
 
-            # Envoyer confirmation
             keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
