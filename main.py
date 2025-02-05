@@ -367,6 +367,19 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return CHOOSING
 
+async def check_premium_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Vérifie si le message contient des emojis premium et envoie un message d'erreur le cas échéant"""
+    message = update.message.text
+    logger.info(f"Vérification des emojis premium dans le message: {message}")
+    
+    if contains_premium_emoji(message):
+        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
+        logger.info("Emojis premium détectés et message d'erreur envoyé")
+        return True
+    
+    logger.info("Aucun emoji premium détecté")
+    return False
+
 async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du message d'accueil"""
     message = update.message.text
@@ -418,18 +431,27 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     return await show_admin_menu(update, context)
 
-async def check_premium_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Vérifie si le message contient des emojis premium et envoie un message d'erreur le cas échéant"""
-    message = update.message.text
-    logger.info(f"Vérification des emojis premium dans le message: {message}")
-    
-    if contains_premium_emoji(message):
-        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
-        logger.info("Emojis premium détectés et message d'erreur envoyé")
-        return True
-    
-    logger.info("Aucun emoji premium détecté")
-    return False
+
+
+async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    example_message = (
+        "🌟 *Bienvenue sur notre bot!* 🌟\n\n"
+        "Voici comment vous pouvez formater votre texte :\n"
+        "*Gras* : `*texte*`\n"
+        "_Italique_ : `_texte_`\n"
+        "__Souligné__ : `__texte__`\n"
+        "~Barré~ : `~texte~`\n"
+        "Parcourez notre menu en toute tranquillité !\n"
+        "📋 Cliquez sur MENU pour voir les catégories"
+    )
+
+    await update.callback_query.edit_message_text(
+        f"📝 Exemple de message de bienvenue :\n\n{example_message}\n\n"
+        "Veuillez entrer votre nouveau message d'accueil :",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]]),
+        parse_mode='MarkdownV2'
+    )
+    return WAITING_WELCOME_MESSAGE
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
@@ -726,25 +748,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             ]])
         )
         return WAITING_BANNER_IMAGE
-
-
-    elif query.data == "edit_welcome_message":
-        example_message = (
-            "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-            "Ceci n'est pas le produit final.\n"
-            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
-            "📋 Cliquez sur MENU pour voir les catégories"
-        )
-        await query.message.edit_text(
-            f"📝 Exemple de message de bienvenue :\n\n{example_message}\n\n"
-            "Veuillez entrer votre nouveau message d'accueil :",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")
-            ]]),
-            parse_mode='Markdown'
-        )
-        return WAITING_WELCOME_MESSAGE
-
 
     elif query.data == "add_category":
         await query.message.edit_text(
