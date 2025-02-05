@@ -1,24 +1,22 @@
 {
     "stats": {
-        "total_views": 121,
+        "total_views": 3,
         "category_views": {
-            "test 3": 67,
-            "test catégorie": 1
+            "test 3": 2
         },
         "product_views": {
             "test 3": {
-                "dddd": 7,
-                "dsdqd": 6
+                "Test modification": 1
             }
         },
-        "last_updated": "2025-02-05 18:53:31",
-        "last_reset": "2025-02-04"
+        "last_updated": "19:43:55",
+        "last_reset": "2025-02-05"
     },
     "test 3": [
         {
-            "name": "dsdqd",
+            "name": "Test modification",
             "price": "dqzdqs",
-            "description": "dsqdq",
+            "description": "Test modification",
             "media": [
                 {
                     "media_id": "AgACAgQAAxkBAAIFumeiSSrQnY9teW9CN-x3Zud59ntkAAJ1xDEbm-0ZUWLNKAudhRDgAQADAgADbQADNgQ",
@@ -54,6 +52,5 @@
                 }
             ]
         }
-    ],
-    "test catégorie": []
+    ]
 }

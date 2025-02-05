@@ -908,7 +908,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard.extend(contact_buttons)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+       
         welcome_text = (
             "🌿 *Bienvenue chez Green Attack* 🌿\n\n"
             "Ceci n'est pas le produit final\n"
@@ -1195,20 +1195,23 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return await show_admin_menu(update, context)
 
     elif query.data == "confirm_reset_stats":
-        # Demander confirmation avant de réinitialiser
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Oui, réinitialiser", callback_data="reset_stats_confirmed"),
-                InlineKeyboardButton("❌ Non, annuler", callback_data="admin")
-            ]
-        ]
+        # Réinitialiser les statistiques
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        CATALOG['stats'] = {
+            "total_views": 0,
+            "category_views": {},
+            "product_views": {},
+            "last_updated": now.split(" ")[1],  # Juste l'heure
+            "last_reset": now.split(" ")[0]  # Juste la date
+        }
+        save_catalog(CATALOG)
         
+        # Afficher un message de confirmation
+        keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
         await query.message.edit_text(
-            "⚠️ *Êtes-vous sûr de vouloir réinitialiser toutes les statistiques ?*\n\n"
-            "Cette action est irréversible et supprimera :\n"
-            "• Toutes les vues des catégories\n"
-            "• Toutes les vues des produits\n"
-            "• Le compteur de vues total",
+            "✅ *Les statistiques ont été réinitialisées avec succès!*\n\n"
+            f"Date de réinitialisation : {CATALOG['stats']['last_reset']}\n\n"
+            "Toutes les statistiques sont maintenant à zéro.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
@@ -1220,7 +1223,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             "total_views": 0,
             "category_views": {},
             "product_views": {},
-            "last_updated": now.strftime("%H:%M:%S"),         # Juste l'heure
+            "last_updated": now.split(" ")[1],         # Juste l'heure
             "last_reset": now.strftime("%Y-%m-%d")           # Juste la date
         }
         save_catalog(CATALOG)
