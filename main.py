@@ -4,6 +4,7 @@ import asyncio
 import shutil
 import os
 import re
+import sys
 from datetime import datetime, time
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -26,8 +27,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
+        logging.FileHandler('bot.log', encoding='utf-8'),
+        logging.StreamHandler(stream=sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -368,11 +369,12 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du message d'accueil"""
-    if await check_premium_emoji(update, context):
-        logger.info("Reprise après détection d'emoji premium dans handle_welcome_message.")
+    message = update.message.text
+    if contains_premium_emoji(message):
+        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
         return WAITING_WELCOME_MESSAGE
 
-    welcome_message = update.message.text
+    welcome_message = message
     logger.info(f"Nouveau message d'accueil reçu: {welcome_message}")
 
     # Sauvegarder le message d'accueil dans la configuration
@@ -1898,7 +1900,6 @@ def main():
         name="main_conversation",
         persistent=False,
     )
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_premium_emoji))
         application.add_handler(conv_handler)
         application.job_queue.run_daily(daily_maintenance, time=time(hour=0, minute=0))
         # Démarrer le bot
