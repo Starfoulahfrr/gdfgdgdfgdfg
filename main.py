@@ -3,6 +3,7 @@ import logging
 import asyncio
 import shutil
 import os
+import re
 from datetime import datetime, time
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -176,6 +177,11 @@ def print_catalog_debug():
                 print(f"  Produit: {product['name']}")
                 if 'media' in product:
                     print(f"    Médias ({len(product['media'])}): {product['media']}")
+
+def contains_premium_emoji(text):
+    """Vérifie si le texte contient des emojis premium"""
+    premium_emoji_pattern = re.compile(r'[\U0001F600-\U0001F64F]')  # Exemple de pattern pour détecter les emojis premium
+    return bool(premium_emoji_pattern.search(text))
 
 # États de conversation
 CHOOSING = "CHOOSING"
@@ -362,6 +368,9 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la modification du message d'accueil"""
+    if await check_premium_emoji(update, context):
+        return WAITING_WELCOME_MESSAGE
+
     welcome_message = update.message.text
     logger.info(f"Nouveau message d'accueil reçu: {welcome_message}")
 
@@ -374,6 +383,7 @@ async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_T
         logger.info("Message d'accueil sauvegardé dans la configuration")
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde du message d'accueil: {e}")
+        await update.message.reply_text("❌ Une erreur s'est produite lors de la sauvegarde du message d'accueil.")
 
     await update.message.reply_text("✅ Message d'accueil mis à jour avec succès !")
 
@@ -404,7 +414,13 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     return await show_admin_menu(update, context)
 
-
+async def check_premium_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Vérifie si le message contient des emojis premium et envoie un message d'erreur le cas échéant"""
+    message = update.message.text
+    if contains_premium_emoji(message):
+        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
+        return True
+    return False
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
@@ -1875,7 +1891,7 @@ def main():
         name="main_conversation",
         persistent=False,
     )
-    
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_premium_emoji))
         application.add_handler(conv_handler)
         application.job_queue.run_daily(daily_maintenance, time=time(hour=0, minute=0))
         # Démarrer le bot
