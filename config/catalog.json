@@ -1,0 +1,59 @@
+{
+    "stats": {
+        "total_views": 121,
+        "category_views": {
+            "test 3": 67,
+            "test catégorie": 1
+        },
+        "product_views": {
+            "test 3": {
+                "dddd": 7,
+                "dsdqd": 6
+            }
+        },
+        "last_updated": "2025-02-05 18:53:31",
+        "last_reset": "2025-02-04"
+    },
+    "test 3": [
+        {
+            "name": "dsdqd",
+            "price": "dqzdqs",
+            "description": "dsqdq",
+            "media": [
+                {
+                    "media_id": "AgACAgQAAxkBAAIFumeiSSrQnY9teW9CN-x3Zud59ntkAAJ1xDEbm-0ZUWLNKAudhRDgAQADAgADbQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1738691485
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1738691488
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIFvmeiSTolClbf4VPzjA4w_kGEn9h6AAJ3xDEbm-0ZUUqfQxZhslVtAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1738691493
+                }
+            ]
+        },
+        {
+            "name": "dddd",
+            "price": "dddd",
+            "description": "dddd",
+            "media": [
+                {
+                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIFvGeiSTKzQfq1AAKuuKGB-aAkE8s5AAJ2xDEbm-0ZURQRxB57D0dZAQADAgADbQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 2
+                }
+            ]
+        }
+    ],
+    "test catégorie": []
+}
