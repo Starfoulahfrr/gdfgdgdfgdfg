@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import asyncio
 import shutil
@@ -265,17 +265,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Vérifier si une image banner est configurée
-        if CONFIG.get('banner_image'):
-            # Si un ancien message banner existe, le supprimer
-            if 'banner_message_id' in context.user_data:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=chat_id,
-                        message_id=context.user_data['banner_message_id']
-                    )
-                except:
-                    pass
-            
+        if CONFIG.get('banner_image'):            
             # Envoyer la nouvelle image banner
             banner_message = await context.bot.send_photo(
                 chat_id=chat_id,
