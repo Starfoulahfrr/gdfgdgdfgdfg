@@ -201,21 +201,16 @@ CATALOG = load_catalog()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
-    
-    # Charger et mettre à jour les utilisateurs actifs
     if 'active_users' not in context.bot_data:
         context.bot_data['active_users'] = load_active_users()
-    
-    # Si c'est encore un set, convertir en dictionnaire
-    if isinstance(context.bot_data['active_users'], set):
-        context.bot_data['active_users'] = {
-            user_id: {
-                'username': None,
-                'first_name': None,
-                'last_name': None,
-                'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            } for user_id in context.bot_data['active_users']
-        }
+
+    context.bot_data['active_users'][user.id] = {
+        'username': user.username,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    save_active_users(context.bot_data['active_users'])
     
     # Sauvegarder les informations de l'utilisateur
     context.bot_data['active_users'][user.id] = {
@@ -1442,45 +1437,43 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return await show_admin_menu(update, context)
 
     elif query.data == "manage_users":
-            active_users = context.bot_data.get('active_users', {})
-            if 'active_users' not in context.bot_data:
-                context.bot_data['active_users'] = load_active_users()
-        
-            cleaned = await clean_inactive_users(context)
-        
-            # Créer le texte sans formatage spécial d'abord
-            text = "👥 Gestion des utilisateurs\n\n"
-            text += f"Utilisateurs actifs : {len(active_users)}\n"
-            text += f"Utilisateurs nettoyés : {cleaned}\n\n"
-            text += "Liste des utilisateurs actifs :\n"
-        
-            # Liste des utilisateurs (limité à 20)
-            for user_id, user_data in list(active_users.items())[:20]:
-                username = user_data.get('username', '')
-                first_name = user_data.get('first_name', '')
-                last_name = user_data.get('last_name', '')
-                last_seen = user_data.get('last_seen', 'Inconnu')
-            
-                full_name = f"{first_name} {last_name}".strip() or "Nom inconnu"
-            
-                text += f"\n• {full_name}"
-                if username:
-                    text += f" (@{username})"
-                text += f"\nDernière activité : {last_seen}\n"
-        
-            if len(active_users) > 20:
-                text += f"\n... et {len(active_users) - 20} autres utilisateurs"
-        
-            keyboard = [
-                [InlineKeyboardButton("🔄 Nettoyer la liste", callback_data="clean_users")],
-                [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
-            ]
-        
-            # Envoyer le message sans parse_mode
-            await query.message.edit_text(
-                text=text,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+        active_users = context.bot_data.get('active_users', {})
+        if 'active_users' not in context.bot_data:
+            context.bot_data['active_users'] = load_active_users()
+
+        cleaned = await clean_inactive_users(context)
+
+        # Créer le texte sans formatage spécial d'abord
+        text = "👥 Gestion des utilisateurs\n\n"
+        text += f"Utilisateurs actifs : {len(active_users)}\n"
+        text += f"Utilisateurs nettoyés : {cleaned}\n\n"
+        text += "Liste des utilisateurs actifs :\n"
+
+        # Liste des utilisateurs (limité à 20)
+        for user_id, user_data in list(active_users.items())[:20]:
+            username = user_data.get('username', '')
+            first_name = user_data.get('first_name', '')
+            last_name = user_data.get('last_name', '')
+
+            full_name = f"{first_name} {last_name}".strip() or "Nom inconnu"
+
+            text += f"\n• {full_name}"
+            if username:
+                text += f" (@{username})"
+
+        if len(active_users) > 20:
+            text += f"\n... et {len(active_users) - 20} autres utilisateurs"
+
+        keyboard = [
+            [InlineKeyboardButton("🔄 Nettoyer la liste", callback_data="clean_users")],
+            [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
+        ]
+
+        # Envoyer le message sans parse_mode
+        await query.message.edit_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif query.data == "clean_users":
             try:
@@ -1507,13 +1500,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     username = user_data.get('username', '')
                     first_name = user_data.get('first_name', '')
                     last_name = user_data.get('last_name', '')
-                    last_seen = user_data.get('last_seen', 'Inconnu')
                 
                     full_name = f"{first_name} {last_name}".strip() or "Nom inconnu"
                     text += f"\n• {full_name}"
                     if username:
                         text += f" (@{username})"
-                    text += f"\nDernière activité : {last_seen}\n"
             
                 if len(active_users) > 20:
                     text += f"\n... et {len(active_users) - 20} autres utilisateurs"
