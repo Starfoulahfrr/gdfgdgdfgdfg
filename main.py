@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import asyncio
 import shutil
@@ -9,7 +9,7 @@ from datetime import datetime, time
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, 
+    ApplicationBuilder, 
     CommandHandler, 
     CallbackQueryHandler, 
     MessageHandler, 
@@ -47,7 +47,7 @@ except KeyError as e:
     exit(1)
 
 # Fichier JSON pour stocker le message d'accueil
-CONFIG_FILE = 'welcome_message.json'
+CONFIG_FILE = 'data/welcome_message.json'
 
 # Fonctions de gestion du catalogue
 def load_catalog():
@@ -1849,95 +1849,95 @@ def main():
     """Fonction principale du bot"""
     try:
         # Créer l'application
-        application = Application.builder().token(TOKEN).build()
+        application = ApplicationBuilder().token(TOKEN).build()
 
         # Gestionnaire de conversation principal
         conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('start', start),
-            CommandHandler('admin', admin),
-        ],
-        states={
-            CHOOSING: [
-                CallbackQueryHandler(handle_normal_buttons),
+            entry_points=[
+                CommandHandler('start', start),
+                CommandHandler('admin', admin),
             ],
-            WAITING_CATEGORY_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_category_name),
-                CallbackQueryHandler(handle_normal_buttons),
+            states={
+                CHOOSING: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_CATEGORY_NAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_category_name),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_PRODUCT_NAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_PRODUCT_PRICE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_price),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_PRODUCT_DESCRIPTION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_description),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_PRODUCT_MEDIA: [
+                    MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                SELECTING_CATEGORY: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                SELECTING_CATEGORY_TO_DELETE: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                SELECTING_PRODUCT_TO_DELETE: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_CONTACT_USERNAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_contact_username),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                SELECTING_PRODUCT_TO_EDIT: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                EDITING_PRODUCT_FIELD: [
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_NEW_VALUE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_WELCOME_MESSAGE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, save_welcome_message),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_BANNER_IMAGE: [
+                    MessageHandler(filters.PHOTO, handle_banner_image),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_PRODUCT_MEDIA: [
+                    MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
+                    CallbackQueryHandler(finish_product_media, pattern="^finish_media$"),
+                    CallbackQueryHandler(handle_normal_buttons),
+                ],
+                WAITING_BROADCAST_MESSAGE: [
+                    MessageHandler(
+                        (filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND,
+                        handle_broadcast_message
+                    ),
+                    CallbackQueryHandler(
+                        lambda u, c: show_admin_menu(u, c),
+                        pattern="cancel_broadcast"
+                    ),
+                ],
+            },
+            fallbacks=[
+                CommandHandler('start', start),
+                CommandHandler('admin', admin),
             ],
-            WAITING_PRODUCT_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_PRODUCT_PRICE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_price),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_PRODUCT_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_description),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_PRODUCT_MEDIA: [
-                MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            SELECTING_CATEGORY: [
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            SELECTING_CATEGORY_TO_DELETE: [
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            SELECTING_PRODUCT_TO_DELETE: [
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_CONTACT_USERNAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_contact_username),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            SELECTING_PRODUCT_TO_EDIT: [
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            EDITING_PRODUCT_FIELD: [
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_NEW_VALUE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_WELCOME_MESSAGE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_welcome_message),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_BANNER_IMAGE: [
-                MessageHandler(filters.PHOTO, handle_banner_image),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_PRODUCT_MEDIA: [
-                MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
-                CallbackQueryHandler(finish_product_media, pattern="^finish_media$"),
-                CallbackQueryHandler(handle_normal_buttons),
-            ],
-            WAITING_BROADCAST_MESSAGE: [
-    MessageHandler(
-        (filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND,  # Parenthèses corrigées
-        handle_broadcast_message
-    ),
-    CallbackQueryHandler(
-        lambda u, c: show_admin_menu(u, c),
-        pattern="cancel_broadcast"
-    ),
-],
-         
-        },
-        fallbacks=[
-            CommandHandler('start', start),
-            CommandHandler('admin', admin),
-        ],
-        name="main_conversation",
-        persistent=False,
-    )
+            name="main_conversation",
+            persistent=False,
+        )
         application.add_handler(conv_handler)
         application.job_queue.run_daily(daily_maintenance, time=time(hour=0, minute=0))
+
         # Démarrer le bot
         print("Bot démarré...")
         application.run_polling()
