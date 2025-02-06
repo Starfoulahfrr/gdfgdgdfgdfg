@@ -1113,7 +1113,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 print(f"Erreur lors de la navigation des médias: {e}")
                 await query.answer("Une erreur est survenue")
 
-
     elif query.data == "edit_product":
         keyboard = []
         for category in CATALOG.keys():
