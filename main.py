@@ -1264,65 +1264,48 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
     elif query.data.startswith("view_"):
-            category = query.data.replace("view_", "")
-            if category in CATALOG:
-                # D'abord supprimer le message de produit actuel
-                try:
-                    await query.message.delete()
-                except Exception as e:
-                    print(f"Erreur lors de la suppression du message de query: {e}")
+        category = query.data.replace("view_", "")
+        if category in CATALOG:
+            # Incrémenter le compteur total
+            if 'stats' not in CATALOG:
+                CATALOG['stats'] = {
+                    "total_views": 0,
+                    "category_views": {},
+                    "product_views": {},
+                    "last_updated": datetime.utcnow().strftime("%H:%M:%S")
+                }
 
-                # Si on a un message produit précédent, le supprimer aussi
-                if 'last_product_message_id' in context.user_data:
-                    try:
-                        await context.bot.delete_message(
-                            chat_id=query.message.chat_id,
-                            message_id=context.user_data['last_product_message_id']
-                        )
-                        del context.user_data['last_product_message_id']
-                    except Exception as e:
-                        print(f"Erreur lors de la suppression du message produit: {e}")
+            # Incrémenter les vues de la catégorie
+            if 'category_views' not in CATALOG['stats']:
+                CATALOG['stats']['category_views'] = {}
+            if category not in CATALOG['stats']['category_views']:
+                CATALOG['stats']['category_views'][category] = 0
+            CATALOG['stats']['category_views'][category] += 1
 
-            if category in CATALOG:
-                # Incrémenter le compteur total
-                if 'stats' not in CATALOG:
-                    CATALOG['stats'] = {
-                        "total_views": 0,
-                        "category_views": {},
-                        "product_views": {},
-                        "last_updated": datetime.utcnow().strftime("%H:%M:%S")
-                    }
-    
-                # Incrémenter les vues de la catégorie
-                if 'category_views' not in CATALOG['stats']:
-                    CATALOG['stats']['category_views'] = {}
-                if category not in CATALOG['stats']['category_views']:
-                    CATALOG['stats']['category_views'][category] = 0
-                CATALOG['stats']['category_views'][category] += 1
-    
-                CATALOG['stats']['total_views'] += 1
-                CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
-                save_catalog(CATALOG)
+            CATALOG['stats']['total_views'] += 1
+            CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
+            save_catalog(CATALOG)
 
-                products = CATALOG[category]
-                # Afficher la liste des produits
-                text = f"*{category}*\n\n"
-                keyboard = []
-                for product in products:
-                    keyboard.append([InlineKeyboardButton(
-                        product['name'],
-                        callback_data=f"product_{category}_{product['name']}"
-                    )])
-            
-                keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-            
-                # Envoyer un nouveau message avec la liste des produits
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
+            products = CATALOG[category]
+            # Afficher la liste des produits
+            text = f"*{category}*\n\n"
+            keyboard = []
+            for product in products:
+                keyboard.append([InlineKeyboardButton(
+                    product['name'],
+                    callback_data=f"product_{category}_{product['name']}"
+                )])
+
+            keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
+
+            try:
+                await query.edit_message_text(
                     text=text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
-                )    
+                )
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour du message des produits: {e}")
                 
     elif query.data == "show_categories":
         keyboard = []
@@ -1357,15 +1340,14 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard.extend([
             [
                 InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-                InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+                InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
             ],
-            [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+            [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
         ])
     
         welcome_text = (
-            "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-            "Ceci n'est pas le produit final.\n"
-            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+            "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
+            "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
             "📋 Cliquez sur MENU pour voir les catégories"
         )
 
