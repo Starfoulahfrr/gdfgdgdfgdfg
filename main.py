@@ -1113,29 +1113,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 print(f"Erreur lors de la navigation des médias: {e}")
                 await query.answer("Une erreur est survenue")
 
-    elif query.data == "show_categories":
-        keyboard = []
-        # Créer uniquement les boutons de catégories
-        for category in CATALOG.keys():
-            if category != 'stats':
-                keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
-    
-        # Ajouter uniquement le bouton retour à l'accueil
-        keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
-    
-        new_text = "📋 *Menu des catégories*\n\n" \
-                   "Choisissez une catégorie pour voir les produits :"
-    
-        # Vérifier si le message est différent avant de le modifier
-        if query.message.text != new_text or query.message.reply_markup != InlineKeyboardMarkup(keyboard):
-            await query.edit_message_text(
-                new_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        else:
-            await query.answer()
-
     elif query.data == "edit_product":
         keyboard = []
         for category in CATALOG.keys():
@@ -1757,28 +1734,31 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.extend([
         [
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
+            InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
         ],
-        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
+        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
     ])
     
     welcome_text = (
-        "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
-        "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
+        "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
+        "Ceci n'est pas le produit final.\n"
+        "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
         "📋 Cliquez sur MENU pour voir les catégories"
     )
 
     try:
-        # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
-        if 'menu_message_id' in context.user_data:
+        # Mettre à jour le message du menu des catégories existant au lieu d'en créer un nouveau
+        if 'categories_menu_message_id' in context.user_data:
             try:
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
-                    message_id=context.user_data['menu_message_id'],
+                    message_id=context.user_data['categories_menu_message_id'],
                     text=welcome_text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
+                context.user_data['menu_message_id'] = context.user_data['categories_menu_message_id']
+                del context.user_data['categories_menu_message_id']
             except:
                 pass
         else:
