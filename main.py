@@ -103,7 +103,6 @@ def backup_data():
 def print_catalog_debug():
     """Fonction de debug pour afficher le contenu du catalogue"""
     for category, products in CATALOG.items():
-        if category != 'stats':
             print(f"\nCatégorie: {category}")
             for product in products:
                 print(f"  Produit: {product['name']}")
@@ -617,7 +616,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "add_product":
         keyboard = []
         for category in CATALOG.keys():
-            if category != 'stats':
                 keyboard.append([InlineKeyboardButton(category, callback_data=f"select_category_{category}")])
         keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")])
         
@@ -666,7 +664,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "delete_category":
         keyboard = []
         for category in CATALOG.keys():
-            if category != 'stats':
                 keyboard.append([InlineKeyboardButton(category, callback_data=f"confirm_delete_category_{category}")])
         keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_delete_category")])
         
@@ -712,7 +709,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "delete_product":
         keyboard = []
         for category in CATALOG.keys():
-            if category != 'stats':
                 keyboard.append([
                     InlineKeyboardButton(
                         category, 
@@ -808,7 +804,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             # Si le message n'existe pas, recréez-le
             keyboard = []
             for category in CATALOG.keys():
-                if category != 'stats':
                     keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
 
             keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
@@ -1000,7 +995,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "edit_product":
         keyboard = []
         for category in CATALOG.keys():
-            if category != 'stats':
                 keyboard.append([
                     InlineKeyboardButton(
                         category, 
@@ -1102,56 +1096,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif query.data == "cancel_edit":
         return await show_admin_menu(update, context)
-
-    elif query.data == "confirm_reset_stats":
-        # Réinitialiser les statistiques
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        CATALOG['stats'] = {
-            "total_views": 0,
-            "category_views": {},
-            "product_views": {},
-            "last_updated": now.split(" ")[1],  # Juste l'heure
-            "last_reset": now.split(" ")[0]  # Juste la date
-        }
-        save_catalog(CATALOG)
-        
-        # Afficher un message de confirmation
-        keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
-        await query.message.edit_text(
-            "✅ *Les statistiques ont été réinitialisées avec succès!*\n\n"
-            f"Date de réinitialisation : {CATALOG['stats']['last_reset']}\n\n"
-            "Toutes les statistiques sont maintenant à zéro.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    elif query.data == "reset_stats_confirmed":
-        # Réinitialiser les statistiques
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        CATALOG['stats'] = {
-            "total_views": 0,
-            "category_views": {},
-            "product_views": {},
-            "last_updated": now.split(" ")[1],         # Juste l'heure
-            "last_reset": now.strftime("%Y-%m-%d")           # Juste la date
-        }
-        save_catalog(CATALOG)
-        
-        # Afficher un message de confirmation
-        keyboard = [[InlineKeyboardButton("🔙 Retour au menu", callback_data="admin")]]
-        await query.message.edit_text(
-            "✅ *Les statistiques ont été réinitialisées avec succès!*\n\n"
-            f"Date de réinitialisation : {CATALOG['stats']['last_reset']}\n\n"
-            "Toutes les statistiques sont maintenant à zéro.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-                
+                        
     elif query.data == "show_categories":
         keyboard = []
         # Créer uniquement les boutons de catégories
         for category in CATALOG.keys():
-            if category != 'stats':
                 keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
 
         # Ajouter uniquement le bouton retour à l'accueil
