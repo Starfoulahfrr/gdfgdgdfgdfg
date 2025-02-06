@@ -53,38 +53,6 @@ def save_catalog(catalog):
     with open(CONFIG['catalog_file'], 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=4, ensure_ascii=False)
 
-
-def save_active_users(users_data):
-    """Sauvegarde les données des utilisateurs actifs dans un fichier"""
-    try:
-        with open('data/active_users.json', 'w', encoding='utf-8') as f:
-            # Convertir les IDs en strings pour le JSON
-            data = {str(user_id): info for user_id, info in users_data.items()}
-            json.dump(data, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Erreur lors de la sauvegarde des utilisateurs actifs: {e}")
-
-def load_active_users():
-    """Charge les données des utilisateurs actifs depuis le fichier"""
-    try:
-        with open('data/active_users.json', 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if isinstance(data, list):  # Ancien format (liste d'IDs)
-                # Convertir en nouveau format
-                return {int(user_id): {
-                    'username': None,
-                    'first_name': None,
-                    'last_name': None,
-                    'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                } for user_id in data}
-            else:  # Nouveau format (dictionnaire)
-                return {int(k): v for k, v in data.items()}
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        print(f"Erreur lors du chargement des utilisateurs actifs: {e}")
-        return {}
-
 def backup_data():
     """Crée une sauvegarde des fichiers de données"""
     backup_dir = "backups"
@@ -124,7 +92,6 @@ WAITING_CONTACT_USERNAME = "WAITING_CONTACT_USERNAME"
 SELECTING_PRODUCT_TO_EDIT = "SELECTING_PRODUCT_TO_EDIT"
 EDITING_PRODUCT_FIELD = "EDITING_PRODUCT_FIELD"
 WAITING_NEW_VALUE = "WAITING_NEW_VALUE"
-WAITING_BROADCAST_MESSAGE = "WAITING_BROADCAST_MESSAGE"
 WAITING_BANNER_IMAGE = "WAITING_BANNER_IMAGE"
 
 # Charger le catalogue au démarrage
@@ -134,25 +101,7 @@ CATALOG = load_catalog()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
-    if 'active_users' not in context.bot_data:
-        context.bot_data['active_users'] = load_active_users()
 
-    context.bot_data['active_users'][user.id] = {
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    save_active_users(context.bot_data['active_users'])
-    
-    # Sauvegarder les informations de l'utilisateur
-    context.bot_data['active_users'][user.id] = {
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    save_active_users(context.bot_data['active_users'])
     # Supprimer le message /start
     await update.message.delete()
     
@@ -1247,122 +1196,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
 
         return CHOOSING
 
-    elif query.data == "start_broadcast":
-        if str(update.effective_user.id) not in ADMIN_IDS:
-            await query.answer("❌ Vous n'êtes pas autorisé à utiliser cette fonction.")
-            return CHOOSING
-            
-        await query.message.edit_text(
-            "📢 *Mode Diffusion*\n\n"
-            "Envoyez le message que vous souhaitez diffuser à tous les utilisateurs.\n"
-            "Le message peut contenir du texte, des photos ou des vidéos.\n\n"
-            "Pour annuler, cliquez sur Annuler.",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("❌ Annuler", callback_data="cancel_broadcast")
-            ]])
-        )
-        return WAITING_BROADCAST_MESSAGE
-
-    elif query.data == "cancel_broadcast":
-        return await show_admin_menu(update, context)
-
-    elif query.data == "manage_users":
-        active_users = context.bot_data.get('active_users', {})
-        if 'active_users' not in context.bot_data:
-            context.bot_data['active_users'] = load_active_users()
-
-        cleaned = await clean_inactive_users(context)
-
-        # Créer le texte sans formatage spécial d'abord
-        text = "👥 Gestion des utilisateurs\n\n"
-        text += f"Utilisateurs actifs : {len(active_users)}\n"
-        text += f"Utilisateurs nettoyés : {cleaned}\n\n"
-        text += "Liste des utilisateurs actifs :\n"
-
-        # Liste des utilisateurs (limité à 20)
-        for user_id, user_data in list(active_users.items())[:20]:
-            username = user_data.get('username', '')
-            first_name = user_data.get('first_name', '')
-            last_name = user_data.get('last_name', '')
-
-            full_name = f"{first_name} {last_name}".strip() or "Nom inconnu"
-
-            text += f"\n• {full_name}"
-            if username:
-                text += f" (@{username})"
-
-        if len(active_users) > 20:
-            text += f"\n... et {len(active_users) - 20} autres utilisateurs"
-
-        keyboard = [
-            [InlineKeyboardButton("🔄 Nettoyer la liste", callback_data="clean_users")],
-            [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
-        ]
-
-        # Envoyer le message sans parse_mode
-        await query.message.edit_text(
-            text=text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-    elif query.data == "clean_users":
-            try:
-                # Afficher un message de chargement
-                await query.answer("🔄 Vérification des utilisateurs...")
-                initial_count = len(context.bot_data.get('active_users', {}))
-                cleaned = await clean_inactive_users(context)
-                final_count = len(context.bot_data.get('active_users', {}))
-            
-                text = "👥 Rapport de vérification\n\n"
-                text += f"• Utilisateurs scannés : {initial_count}\n"
-            
-                if cleaned > 0:
-                    text += f"• Utilisateurs supprimés : {cleaned}\n"
-                    text += f"• Utilisateurs restants : {final_count}\n"
-                else:
-                    text += "✅ Tous les utilisateurs sont actifs !\n"
-            
-                text += "\nListe des utilisateurs :\n"
-            
-                # Liste des utilisateurs actifs
-                active_users = context.bot_data.get('active_users', {})
-                for user_id, user_data in list(active_users.items())[:20]:
-                    username = user_data.get('username', '')
-                    first_name = user_data.get('first_name', '')
-                    last_name = user_data.get('last_name', '')
-                
-                    full_name = f"{first_name} {last_name}".strip() or "Nom inconnu"
-                    text += f"\n• {full_name}"
-                    if username:
-                        text += f" (@{username})"
-            
-                if len(active_users) > 20:
-                    text += f"\n... et {len(active_users) - 20} autres utilisateurs"
-            
-                keyboard = [
-                    [InlineKeyboardButton("🔄 Vérifier à nouveau", callback_data="clean_users")],
-                    [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
-                ]
-            
-                await query.message.edit_text(
-                    text,
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-            
-            except Exception as e:
-                print(f"[ERROR] Erreur lors du nettoyage : {e}")
-                # Message de fallback en cas d'erreur
-                await query.message.edit_text(
-                    "Une erreur est survenue lors du nettoyage.\n"
-                    "Veuillez réessayer plus tard.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour", callback_data="admin")
-                    ]])
-                )
-            # Incrémenter les stats du produit
-            stats.increment_product_views(CATALOG, category, product_name)
-
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler temporaire pour obtenir le file_id de l'image banner"""
     if update.message.photo:
@@ -1374,171 +1207,6 @@ async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ Image banner enregistrée!\nFile ID: {file_id}"
         )
-
-async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gère l'envoi du message de broadcast"""
-    if str(update.effective_user.id) not in ADMIN_IDS:
-        await update.message.reply_text("❌ Vous n'êtes pas autorisé à utiliser cette fonction.")
-        return CHOOSING
-
-    try:
-        if 'active_users' not in context.bot_data:
-            context.bot_data['active_users'] = load_active_users()
-        
-        active_users = context.bot_data['active_users']
-        
-        # Convertir en dictionnaire si c'est encore un set
-        if isinstance(active_users, set):
-            active_users = {user_id: {
-                'username': None,
-                'first_name': None,
-                'last_name': None,
-                'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            } for user_id in active_users}
-            context.bot_data['active_users'] = active_users
-        
-        if not active_users:
-            await update.message.reply_text(
-                "❌ Aucun utilisateur actif trouvé.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour au menu admin", callback_data="admin")
-                ]])
-            )
-            return CHOOSING
-
-        success_count = 0
-        fail_count = 0
-        users_to_remove = set()  # Utiliser un set pour stocker les IDs à supprimer
-        
-        # Envoyer le message à chaque utilisateur
-        for user_id in list(active_users.keys()):
-            try:
-                if update.message.photo:
-                    await context.bot.send_photo(
-                        chat_id=user_id,
-                        photo=update.message.photo[-1].file_id,
-                        caption=update.message.caption if update.message.caption else None,
-                        parse_mode='Markdown'
-                    )
-                elif update.message.video:
-                    await context.bot.send_video(
-                        chat_id=user_id,
-                        video=update.message.video.file_id,
-                        caption=update.message.caption if update.message.caption else None,
-                        parse_mode='Markdown'
-                    )
-                else:
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=update.message.text,
-                        parse_mode='Markdown'
-                    )
-                success_count += 1
-                # Mettre à jour la dernière activité
-                active_users[user_id]['last_seen'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            except Exception as e:
-                print(f"Erreur d'envoi à {user_id}: {e}")
-                fail_count += 1
-                if "bot was blocked" in str(e).lower() or "chat not found" in str(e).lower():
-                    users_to_remove.add(user_id)
-
-        # Supprimer les utilisateurs inactifs
-        for user_id in users_to_remove:
-            del active_users[user_id]
-        
-        # Sauvegarder les changements
-        save_active_users(active_users)
-
-        # Envoyer le rapport
-        report = (
-            "📊 *Rapport de diffusion*\n\n"
-            f"✅ Envois réussis : {success_count}\n"
-            f"❌ Échecs : {fail_count}\n"
-            f"📨 Total : {success_count + fail_count}\n\n"
-            f"👥 Utilisateurs actifs restants : {len(active_users)}"
-        )
-        
-        await update.message.reply_text(
-            report,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Retour au menu admin", callback_data="admin")
-            ]])
-        )
-        
-    except Exception as e:
-        print(f"Erreur lors du broadcast: {e}")
-        await update.message.reply_text(
-            f"❌ Une erreur est survenue : {str(e)}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Retour au menu admin", callback_data="admin")
-            ]])
-        )
-    
-    return CHOOSING
-
-async def clean_inactive_users(context: ContextTypes.DEFAULT_TYPE):
-    """Nettoie la liste des utilisateurs inactifs"""
-    if 'active_users' not in context.bot_data:
-        context.bot_data['active_users'] = load_active_users()
-    
-    active_users = context.bot_data['active_users'].copy()  # Créer une copie pour éviter les modifications pendant l'itération
-    inactive_users = set()
-    
-    print(f"[DEBUG] Début du nettoyage - {datetime.utcnow()}")
-    print(f"[DEBUG] Utilisateurs actuels: {len(active_users)}")
-    
-    for user_id in list(active_users.keys()):
-        try:
-            print(f"[DEBUG] Vérification de l'utilisateur {user_id}")
-            
-            # Première tentative : send_chat_action
-            try:
-                await context.bot.send_chat_action(chat_id=user_id, action="typing")
-                await asyncio.sleep(0.1)  # Petit délai
-            except Exception as e:
-                print(f"[DEBUG] Échec send_chat_action pour {user_id}: {str(e)}")
-                if "blocked" in str(e).lower() or "not found" in str(e).lower() or "deactivated" in str(e).lower():
-                    raise  # Forcer le passage au except externe
-                
-            # Deuxième tentative : get_chat
-            try:
-                chat = await context.bot.get_chat(user_id)
-                active_users[user_id] = {
-                    'username': chat.username,
-                    'first_name': chat.first_name,
-                    'last_name': chat.last_name,
-                    'last_seen': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                print(f"[DEBUG] Utilisateur {user_id} actif et mis à jour")
-            except Exception as e:
-                print(f"[DEBUG] Échec get_chat pour {user_id}: {str(e)}")
-                raise  # Forcer le passage au except externe
-                
-        except Exception as e:
-            print(f"[DEBUG] Utilisateur {user_id} marqué comme inactif: {str(e)}")
-            inactive_users.add(user_id)
-            print(f"[DEBUG] Utilisateur {user_id} marqué comme inactif")
-            print(f"[DEBUG] Raison : {str(e)}")
-        
-        await asyncio.sleep(0.2)  # Délai entre chaque utilisateur
-    
-    # Supprimer les utilisateurs inactifs
-    users_removed = 0
-    for user_id in inactive_users:
-        if user_id in active_users:
-            print(f"[DEBUG] Suppression de l'utilisateur {user_id}")
-            del active_users[user_id]
-            users_removed += 1
-    
-    # Mettre à jour context.bot_data
-    context.bot_data['active_users'] = active_users
-    save_active_users(active_users)
-    
-    print(f"[DEBUG] Fin du nettoyage - Utilisateurs restants: {len(active_users)}")
-    print(f"[DEBUG] Utilisateurs supprimés: {users_removed}")
-    
-    return users_removed
 
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -1670,16 +1338,6 @@ def main():
                 CallbackQueryHandler(finish_product_media, pattern="^finish_media$"),
                 CallbackQueryHandler(handle_normal_buttons),
             ],
-            WAITING_BROADCAST_MESSAGE: [
-    MessageHandler(
-        (filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND,  # Parenthèses corrigées
-        handle_broadcast_message
-    ),
-    CallbackQueryHandler(
-        lambda u, c: show_admin_menu(u, c),
-        pattern="cancel_broadcast"
-    ),
-],
          
         },
         fallbacks=[
