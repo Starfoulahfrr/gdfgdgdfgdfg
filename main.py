@@ -63,17 +63,6 @@ def clean_stats():
     
     stats = CATALOG['stats']
     
-    # Nettoyer les vues par catégorie
-    if 'category_views' in stats:
-        categories_to_remove = []
-        for category in stats['category_views']:
-            if category not in CATALOG or category == 'stats':
-                categories_to_remove.append(category)
-        
-        for category in categories_to_remove:
-            del stats['category_views'][category]
-            print(f"🧹 Suppression des stats de la catégorie: {category}")
-
     # Nettoyer les vues par produit
     if 'product_views' in stats:
         categories_to_remove = []
@@ -116,7 +105,14 @@ def get_stats():
         return STATS_CACHE
         
     # Sinon, lire le fichier et mettre à jour le cache
-    STATS_CACHE = load_catalog()['stats']
+    stats = load_catalog().get('stats', {
+        'total_views': 0,
+        'product_views': {},
+        'last_updated': current_time,
+        'last_reset': datetime.utcnow().strftime("%Y-%m-%d")
+    })
+    
+    STATS_CACHE = stats
     LAST_CACHE_UPDATE = current_time
     return STATS_CACHE
 
@@ -853,19 +849,18 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         if 'stats' not in CATALOG:
             CATALOG['stats'] = {
                 "total_views": 0,
-                "category_views": {},
                 "product_views": {},
                 "last_updated": datetime.utcnow().strftime("%H:%M:%S"),  # Format heure uniquement
                 "last_reset": datetime.utcnow().strftime("%Y-%m-%d")  # Format date uniquement
             }
-        
+    
         # Nettoyer les stats avant l'affichage
         clean_stats()
-        
+    
         stats = CATALOG['stats']
         text = "📊 *Statistiques du catalogue*\n\n"
         text += f"👥 Vues totales: {stats.get('total_views', 0)}\n"
-        
+    
         # Convertir le format de l'heure si nécessaire
         last_updated = stats.get('last_updated', 'Jamais')
         if len(last_updated) > 8:  # Si la date contient plus que HH:MM:SS
@@ -874,25 +869,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             except:
                 pass
         text += f"🕒 Dernière mise à jour: {last_updated}\n"
-        
+    
         if 'last_reset' in stats:
             text += f"🔄 Dernière réinitialisation: {stats.get('last_reset', 'Jamais')}\n"
         text += "\n"
-        
-        # Vues par catégorie
-        text += "📈 *Vues par catégorie:*\n"
-        category_views = stats.get('category_views', {})
-        if category_views:
-            sorted_categories = sorted(category_views.items(), key=lambda x: x[1], reverse=True)
-            for category, views in sorted_categories:
-                if category in CATALOG:  # Vérifier que la catégorie existe toujours
-                    text += f"- {category}: {views} vues\n"
-        else:
-            text += "Aucune vue enregistrée.\n"
-
-        # Séparateur
-        text += "\n━━━━━━━━━━━━━━━\n\n"
-        
+    
         # Vues par produit
         text += "🔥 *Produits les plus populaires:*\n"
         product_views = stats.get('product_views', {})
@@ -905,20 +886,20 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     for product_name, views in products.items():
                         if product_name in existing_products:  # Vérifier que le produit existe
                             all_products.append((category, product_name, views))
-            
+        
             # Trier par nombre de vues et prendre les 5 premiers
             sorted_products = sorted(all_products, key=lambda x: x[2], reverse=True)[:5]
             for category, product_name, views in sorted_products:
                 text += f"- {product_name} ({category}): {views} vues\n"
         else:
             text += "Aucune vue enregistrée sur les produits.\n"
-        
+    
         # Ajouter le bouton de réinitialisation des stats
         keyboard = [
             [InlineKeyboardButton("🔄 Réinitialiser les statistiques", callback_data="confirm_reset_stats")],
             [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
         ]
-        await query.message.edit_text(
+        await update.message.edit_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
@@ -1053,7 +1034,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         category = query.data.replace("view_", "")
         if category in CATALOG:
             products = CATALOG[category]
-            # Afficher la liste des produits
             text = f"*{category}*\n\n"
             keyboard = []
             for product in products:
@@ -1061,11 +1041,10 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     product['name'],
                     callback_data=f"product_{category}_{product['name']}"
                 )])
-
+            
             keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-
+            
             try:
-                # Suppression du dernier message de produit (photo ou vidéo)
                 if 'last_product_message_id' in context.user_data:
                     await context.bot.delete_message(
                         chat_id=query.message.chat_id,
@@ -1087,9 +1066,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data['category_message_id'] = message.message_id
                 context.user_data['category_message_text'] = text
                 context.user_data['category_message_reply_markup'] = keyboard
+                
             except Exception as e:
                 print(f"Erreur lors de la mise à jour du message des produits: {e}")
-                # Si la mise à jour échoue, recréez le message
                 message = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=text,
