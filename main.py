@@ -253,7 +253,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
             InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
         ],
-        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr/)]
+        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
     ])
     
     welcome_text = (
@@ -1759,7 +1759,7 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
             InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
         ],
-        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr/)]
+        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
     ])
     
     welcome_text = (
