@@ -251,21 +251,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.extend([
         [
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Chat telegram", url="https://t.me/+YsJIgYjY8_cyYzBk"),
+            InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
         ],
-        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
+        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr/)]
     ])
     
     welcome_text = (
-        "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
-        "Parcourez notre menu en toutes tranquilité !\n"
-        "Ce bot est juste un bot MENU, nous ne prenons AUCUNE COMMANDES DESSUS.\n\n"
+        "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
+        "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
         "📋 Cliquez sur MENU pour voir les catégories"
     )
 
     try:
         # Vérifier si une image banner est configurée
-        if CONFIG.get('banner_image'):            
+        if CONFIG.get('banner_image'):
+            # Si un ancien message banner existe, le supprimer
+            # if 'banner_message_id' in context.user_data:
+            #     try:
+            #         await context.bot.delete_message(
+            #             chat_id=chat_id,
+            #             message_id=context.user_data['banner_message_id']
+            #         )
+            #     except:
+            #         pass
+            
             # Envoyer la nouvelle image banner
             banner_message = await context.bot.send_photo(
                 chat_id=chat_id,
@@ -372,8 +381,6 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     return await show_admin_menu(update, context)
-
-
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
@@ -1358,78 +1365,86 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
     elif query.data == "back_to_home":
-            chat_id = update.effective_chat.id
+        chat_id = update.effective_chat.id
 
-            # Nouveau clavier simplifié pour l'accueil
-            keyboard = [
-                [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
-            ]
-
-            # Ajouter le bouton admin si l'utilisateur est administrateur
-            if str(update.effective_user.id) in ADMIN_IDS:
-                keyboard.append([InlineKeyboardButton("🔧 Menu Admin", callback_data="admin")])
-
-            # Ajouter les boutons de contact et canaux
-            keyboard.extend([
-                [
-                    InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-                    InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
-                ],
-                [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
-            ])
-        
-            welcome_text = (
-                "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-                "Ceci n'est pas le produit final.\n"
-                "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
-                "📋 Cliquez sur MENU pour voir les catégories"
-            )
-
+        # Supprimer l'ancien message d'accueil
+        if 'menu_message_id' in context.user_data:
             try:
-                # Vérifier si une image banner est configurée
-                if CONFIG.get('banner_image'):
-                    # Si un ancien message banner existe, le supprimer
-                    if 'banner_message_id' in context.user_data:
-                        try:
-                            await context.bot.delete_message(
-                                chat_id=chat_id,
-                                message_id=context.user_data['banner_message_id']
-                            )
-                        except:
-                            pass
-                
-                    # Envoyer la nouvelle image banner
-                    banner_message = await context.bot.send_photo(
-                        chat_id=chat_id,
-                        photo=CONFIG['banner_image']
-                    )
-                    context.user_data['banner_message_id'] = banner_message.message_id
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['menu_message_id']
+                )
+            except:
+                pass
 
-                # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
-                if 'menu_message_id' in context.user_data:
-                    try:
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=context.user_data['menu_message_id'],
-                            text=welcome_text,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                    except:
-                        pass
-                else:
-                    menu_message = await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=welcome_text,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['menu_message_id'] = menu_message.message_id
+        # Supprimer l'ancienne image bannière
+        if 'banner_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['banner_message_id']
+                )
+            except:
+                pass
+
+                # Supprimer l'ancien message du menu des catégories
+        if 'categories_menu_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['categories_menu_message_id']
+                )
+            except:
+                pass
+
+        # Nouveau clavier simplifié pour l'accueil
+        keyboard = [
+            [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
+        ]
+
+        # Ajouter le bouton admin si l'utilisateur est administrateur
+        if str(update.effective_user.id) in ADMIN_IDS:
+            keyboard.append([InlineKeyboardButton("🔧 Menu Admin", callback_data="admin")])
+
+        # Ajouter les boutons de contact et canaux
+        keyboard.extend([
+            [
+                InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
+                InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+            ],
+            [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+        ])
+        
+        welcome_text = (
+            "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
+            "Ceci n'est pas le produit final.\n"
+            "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+            "📋 Cliquez sur MENU pour voir les catégories"
+        )
+
+        try:
+            # Vérifier si une image banner est configurée
+            if CONFIG.get('banner_image'):
+                # Envoyer la nouvelle image bannière
+                banner_message = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=CONFIG['banner_image']
+                )
+                context.user_data['banner_message_id'] = banner_message.message_id
+
+            # Envoyer le menu d'accueil
+            menu_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_message_id'] = menu_message.message_id
             
-            except Exception as e:
-                print(f"Erreur lors du retour à l'accueil: {e}")
+        except Exception as e:
+            print(f"Erreur lors du retour à l'accueil: {e}")
 
-            return CHOOSING
+        return CHOOSING
 
     elif query.data == "start_broadcast":
         if str(update.effective_user.id) not in ADMIN_IDS:
@@ -1725,6 +1740,79 @@ async def clean_inactive_users(context: ContextTypes.DEFAULT_TYPE):
     print(f"[DEBUG] Utilisateurs supprimés: {users_removed}")
     
     return users_removed
+
+async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    # Nouveau clavier simplifié pour l'accueil
+    keyboard = [
+        [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
+    ]
+
+    # Ajouter le bouton admin si l'utilisateur est administrateur
+    if str(update.effective_user.id) in ADMIN_IDS:
+        keyboard.append([InlineKeyboardButton("🔧 Menu Admin", callback_data="admin")])
+
+    # Ajouter les boutons de contact et canaux
+    keyboard.extend([
+        [
+            InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
+            InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
+        ],
+        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr/)]
+    ])
+    
+    welcome_text = (
+        "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
+        "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
+        "📋 Cliquez sur MENU pour voir les catégories"
+    )
+
+    try:
+        # Vérifier si une image banner est configurée
+        if CONFIG.get('banner_image'):
+            # Si un ancien message banner existe, le supprimer
+            # if 'banner_message_id' in context.user_data:
+            #     try:
+            #         await context.bot.delete_message(
+            #             chat_id=chat_id,
+            #             message_id=context.user_data['banner_message_id']
+            #         )
+            #     except:
+            #         pass
+            
+            # Envoyer la nouvelle image banner
+            banner_message = await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=CONFIG['banner_image']
+            )
+            context.user_data['banner_message_id'] = banner_message.message_id
+
+        # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
+        if 'menu_message_id' in context.user_data:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=context.user_data['menu_message_id'],
+                    text=welcome_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+        else:
+            menu_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_message_id'] = menu_message.message_id
+        
+    except Exception as e:
+        print(f"Erreur lors du retour à l'accueil: {e}")
+
+    return CHOOSING
 
 def main():
     """Fonction principale du bot"""
