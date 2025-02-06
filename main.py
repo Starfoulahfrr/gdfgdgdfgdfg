@@ -674,9 +674,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
             return CHOOSING
 
-    elif query.data == "back_to_home":
-        return await back_to_home(update, context)
-
     elif query.data == "edit_banner_image":
         await query.message.edit_text(
             "📸 Veuillez envoyer la nouvelle image bannière :",
