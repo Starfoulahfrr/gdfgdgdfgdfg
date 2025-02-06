@@ -16,10 +16,6 @@ from telegram.ext import (
     ConversationHandler
 )
 
-STATS_CACHE = None
-LAST_CACHE_UPDATE = None
-
-
 # Configuration du logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -56,65 +52,6 @@ def save_catalog(catalog):
     with open(CONFIG['catalog_file'], 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=4, ensure_ascii=False)
 
-def clean_stats():
-    """Nettoie les statistiques des produits et catégories qui n'existent plus"""
-    if 'stats' not in CATALOG:
-        return
-    
-    stats = CATALOG['stats']
-    
-    # Nettoyer les vues par produit
-    if 'product_views' in stats:
-        categories_to_remove = []
-        for category in stats['product_views']:
-            if category not in CATALOG or category == 'stats':
-                categories_to_remove.append(category)
-                continue
-            
-            products_to_remove = []
-            existing_products = [p['name'] for p in CATALOG[category]]
-            
-            for product_name in stats['product_views'][category]:
-                if product_name not in existing_products:
-                    products_to_remove.append(product_name)
-            
-            # Supprimer les produits qui n'existent plus
-            for product in products_to_remove:
-                del stats['product_views'][category][product]
-                print(f"🧹 Suppression des stats du produit: {product} dans {category}")
-            
-            # Si la catégorie est vide après nettoyage, la marquer pour suppression
-            if not stats['product_views'][category]:
-                categories_to_remove.append(category)
-        
-        # Supprimer les catégories vides
-        for category in categories_to_remove:
-            if category in stats['product_views']:
-                del stats['product_views'][category]
-
-    # Mettre à jour la date de dernière modification
-    stats['last_updated'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    save_catalog(CATALOG)
-
-def get_stats():
-    global STATS_CACHE, LAST_CACHE_UPDATE
-    current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Si le cache existe et a moins de 30 secondes
-    if STATS_CACHE and LAST_CACHE_UPDATE and (current_time - LAST_CACHE_UPDATE).seconds < 30:
-        return STATS_CACHE
-        
-    # Sinon, lire le fichier et mettre à jour le cache
-    stats = load_catalog().get('stats', {
-        'total_views': 0,
-        'product_views': {},
-        'last_updated': current_time,
-        'last_reset': datetime.utcnow().strftime("%Y-%m-%d")
-    })
-    
-    STATS_CACHE = stats
-    LAST_CACHE_UPDATE = current_time
-    return STATS_CACHE
 
 def save_active_users(users_data):
     """Sauvegarde les données des utilisateurs actifs dans un fichier"""
@@ -311,7 +248,6 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Supprimer une catégorie", callback_data="delete_category")],
         [InlineKeyboardButton("❌ Supprimer un produit", callback_data="delete_product")],
         [InlineKeyboardButton("✏️ Modifier un produit", callback_data="edit_product")],
-        [InlineKeyboardButton("📊 Statistiques", callback_data="show_stats")],
         [InlineKeyboardButton("📞 Modifier le contact", callback_data="edit_contact")],
         [InlineKeyboardButton("📢 Envoyer une annonce", callback_data="start_broadcast")],
         [InlineKeyboardButton("👥 Gérer utilisateurs", callback_data="manage_users")],
@@ -350,76 +286,6 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return CHOOSING
 
-
-async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'stats' not in CATALOG:
-        CATALOG['stats'] = {
-            "total_views": 0,
-            "product_views": {},
-            "last_updated": datetime.utcnow().strftime("%H:%M:%S"),  # Format heure uniquement
-            "last_reset": datetime.utcnow().strftime("%Y-%m-%d")  # Format date uniquement
-        }
-    
-    # Nettoyer les stats avant l'affichage
-    clean_stats()
-    
-    stats = CATALOG['stats']
-    text = "📊 *Statistiques du catalogue*\n\n"
-    text += f"👥 Vues totales: {stats.get('total_views', 0)}\n"
-    
-    # Convertir le format de l'heure si nécessaire
-    last_updated = stats.get('last_updated', 'Jamais')
-    if len(last_updated) > 8:  # Si la date contient plus que HH:MM:SS
-        try:
-            last_updated = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S").strftime("%H:%M:%S")
-        except:
-            pass
-    text += f"🕒 Dernière mise à jour: {last_updated}\n"
-    
-    if 'last_reset' in stats:
-        text += f"🔄 Dernière réinitialisation: {stats.get('last_reset', 'Jamais')}\n"
-    text += "\n"
-    
-    # Vues par produit
-    text += "🔥 *Produits les plus populaires:*\n"
-    product_views = stats.get('product_views', {})
-    if product_views:
-        # Créer une liste de tous les produits existants avec leurs vues
-        all_products = []
-        for category, products in product_views.items():
-            if category in CATALOG:  # Vérifier que la catégorie existe
-                existing_products = [p['name'] for p in CATALOG[category]]
-                for product_name, views in products.items():
-                    if product_name in existing_products:  # Vérifier que le produit existe
-                        all_products.append((category, product_name, views))
-        
-        # Trier par nombre de vues et prendre les 5 premiers
-        sorted_products = sorted(all_products, key=lambda x: x[2], reverse=True)[:5]
-        for category, product_name, views in sorted_products:
-            text += f"- {product_name} ({category}): {views} vues\n"
-    else:
-        text += "Aucune vue enregistrée sur les produits.\n"
-    
-    # Ajouter le bouton de réinitialisation des stats
-    keyboard = [
-        [InlineKeyboardButton("🔄 Réinitialiser les statistiques", callback_data="confirm_reset_stats")],
-        [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
-    ]
-    
-    if update.message:
-        await update.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
 async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout de l'image bannière"""
     if not update.message.photo:
@@ -454,8 +320,6 @@ async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
         # Nettoyage des utilisateurs inactifs
         await clean_inactive_users(context)
         
-        # Nettoyage des stats
-        clean_stats()
         
     except Exception as e:
         print(f"Erreur lors de la maintenance quotidienne : {e}")
@@ -1022,22 +886,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
-            if product:
-                # Incrémenter les stats du produit
-                if 'stats' not in CATALOG:
-                    CATALOG['stats'] = {...}  # même initialisation que ci-dessus
-    
-                if 'product_views' not in CATALOG['stats']:
-                    CATALOG['stats']['product_views'] = {}
-                if category not in CATALOG['stats']['product_views']:
-                    CATALOG['stats']['product_views'][category] = {}
-                if product['name'] not in CATALOG['stats']['product_views'][category]:
-                    CATALOG['stats']['product_views'][category][product['name']] = 0
-    
-                CATALOG['stats']['product_views'][category][product['name']] += 1
-                CATALOG['stats']['total_views'] += 1
-                CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
-                save_catalog(CATALOG)
 
     elif query.data.startswith("view_"):
         category = query.data.replace("view_", "")
