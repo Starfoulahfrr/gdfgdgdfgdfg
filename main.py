@@ -508,9 +508,8 @@ async def handle_product_description(update: Update, context: ContextTypes.DEFAU
     # Envoyer et sauvegarder l'ID du message d'invitation
     invitation_message = await update.message.reply_text(
         "📸 Envoyez les photos ou vidéos du produit (plusieurs possibles)\n"
-        "Une fois terminé, cliquez sur Terminé :",
+        "*Si vous ne voulez pas en envoyer, cliquez sur ignorer* :",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Terminé", callback_data="finish_media")],
             [InlineKeyboardButton("⏩ Ignorer", callback_data="skip_media")],
             [InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")]
         ])
