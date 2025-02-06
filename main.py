@@ -1113,6 +1113,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 print(f"Erreur lors de la navigation des médias: {e}")
                 await query.answer("Une erreur est survenue")
 
+
     elif query.data == "edit_product":
         keyboard = []
         for category in CATALOG.keys():
@@ -1344,36 +1345,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "back_to_home":
         chat_id = update.effective_chat.id
 
-        # Supprimer l'ancien message d'accueil
-        if 'menu_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=chat_id,
-                    message_id=context.user_data['menu_message_id']
-                )
-            except:
-                pass
-
-        # Supprimer l'ancienne image bannière
-        if 'banner_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=chat_id,
-                    message_id=context.user_data['banner_message_id']
-                )
-            except:
-                pass
-
-                # Supprimer l'ancien message du menu des catégories
-        if 'categories_menu_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=chat_id,
-                    message_id=context.user_data['categories_menu_message_id']
-                )
-            except:
-                pass
-
         # Nouveau clavier simplifié pour l'accueil
         keyboard = [
             [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
@@ -1391,7 +1362,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             ],
             [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
         ])
-        
+    
         welcome_text = (
             "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
             "Ceci n'est pas le produit final.\n"
@@ -1400,8 +1371,29 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
         try:
-            # Vérifier si une image banner est configurée
-            if CONFIG.get('banner_image'):
+            # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
+            if 'menu_message_id' in context.user_data:
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=context.user_data['menu_message_id'],
+                        text=welcome_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    print(f"Erreur lors de la mise à jour du message d'accueil: {e}")
+            else:
+                menu_message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=welcome_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                context.user_data['menu_message_id'] = menu_message.message_id
+
+            # Vérifier si une image banner est configurée et si elle n'existe pas déjà
+            if CONFIG.get('banner_image') and 'banner_message_id' not in context.user_data:
                 # Envoyer la nouvelle image bannière
                 banner_message = await context.bot.send_photo(
                     chat_id=chat_id,
@@ -1409,15 +1401,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 context.user_data['banner_message_id'] = banner_message.message_id
 
-            # Envoyer le menu d'accueil
-            menu_message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            context.user_data['menu_message_id'] = menu_message.message_id
-            
         except Exception as e:
             print(f"Erreur lors du retour à l'accueil: {e}")
 
