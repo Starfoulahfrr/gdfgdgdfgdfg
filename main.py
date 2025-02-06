@@ -312,6 +312,14 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
         return ConversationHandler.END
 
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Commande pour accéder au menu d'administration"""
+    if str(update.effective_user.id) in ADMIN_IDS:
+        return await show_admin_menu(update, context)
+    else:
+        await update.message.reply_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
+        return ConversationHandler.END
+
 async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Affiche le menu d'administration"""
     keyboard = [
@@ -335,17 +343,19 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if update.callback_query:
-            await update.callback_query.edit_message_text(
+            message = await update.callback_query.edit_message_text(
                 admin_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
+            context.user_data['menu_message_id'] = message.message_id
         else:
-            await update.message.reply_text(
+            message = await update.message.reply_text(
                 admin_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
+            context.user_data['menu_message_id'] = message.message_id
     except Exception as e:
         print(f"Erreur dans show_admin_menu: {e}")
         await context.bot.send_message(
@@ -942,35 +952,32 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return await show_admin_menu(update, context)
 
     elif query.data == "back_to_categories":
-        keyboard = []
-        for category in CATALOG.keys():
-            if category != 'stats':
-                keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
-        
-        # Ajout des boutons de contact/redirection
-        contact_buttons = [
-        [
-            InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Chat telegram", url="https://t.me/+YsJIgYjY8_cyYzBk"),
-        ],
-        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
-    ]
-        keyboard.extend(contact_buttons)
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-       
-        welcome_text = (
-            "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
-            "Parcourez notre menu en toutes tranquilité !\n"
-            "Ce bot est juste un bot MENU, *nous ne prenons AUCUNE COMMANDES DESSUS*.\n\n"
-            "📋 Cliquez sur *MENU* pour voir les catégories"
-        )
-        
-        await query.edit_message_text(
-            welcome_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        if 'category_message_id' in context.user_data:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=query.message.chat_id,
+                    message_id=context.user_data['category_message_id'],
+                    text=context.user_data['category_message_text'],
+                    reply_markup=InlineKeyboardMarkup(context.user_data['category_message_reply_markup']),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour du message des catégories: {e}")
+        else:
+            # Si le message n'existe pas, recréez-le
+            keyboard = []
+            for category in CATALOG.keys():
+                if category != 'stats':
+                    keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
+
+            keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
+
+            await query.edit_message_text(
+                "📋 *Menu*\n\n"
+                "Choisissez une catégorie pour voir les produits :",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
 
     elif query.data == "skip_media":
         category = context.user_data.get('temp_product_category')
@@ -1318,7 +1325,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
         
         await query.edit_message_text(
-            "📋 *Menu des catégories*\n\n"
+            "📋 *Menu*\n\n"
             "Choisissez une catégorie pour voir les produits :",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
