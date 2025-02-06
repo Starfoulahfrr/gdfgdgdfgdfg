@@ -350,6 +350,76 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return CHOOSING
 
+
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'stats' not in CATALOG:
+        CATALOG['stats'] = {
+            "total_views": 0,
+            "product_views": {},
+            "last_updated": datetime.utcnow().strftime("%H:%M:%S"),  # Format heure uniquement
+            "last_reset": datetime.utcnow().strftime("%Y-%m-%d")  # Format date uniquement
+        }
+    
+    # Nettoyer les stats avant l'affichage
+    clean_stats()
+    
+    stats = CATALOG['stats']
+    text = "📊 *Statistiques du catalogue*\n\n"
+    text += f"👥 Vues totales: {stats.get('total_views', 0)}\n"
+    
+    # Convertir le format de l'heure si nécessaire
+    last_updated = stats.get('last_updated', 'Jamais')
+    if len(last_updated) > 8:  # Si la date contient plus que HH:MM:SS
+        try:
+            last_updated = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S").strftime("%H:%M:%S")
+        except:
+            pass
+    text += f"🕒 Dernière mise à jour: {last_updated}\n"
+    
+    if 'last_reset' in stats:
+        text += f"🔄 Dernière réinitialisation: {stats.get('last_reset', 'Jamais')}\n"
+    text += "\n"
+    
+    # Vues par produit
+    text += "🔥 *Produits les plus populaires:*\n"
+    product_views = stats.get('product_views', {})
+    if product_views:
+        # Créer une liste de tous les produits existants avec leurs vues
+        all_products = []
+        for category, products in product_views.items():
+            if category in CATALOG:  # Vérifier que la catégorie existe
+                existing_products = [p['name'] for p in CATALOG[category]]
+                for product_name, views in products.items():
+                    if product_name in existing_products:  # Vérifier que le produit existe
+                        all_products.append((category, product_name, views))
+        
+        # Trier par nombre de vues et prendre les 5 premiers
+        sorted_products = sorted(all_products, key=lambda x: x[2], reverse=True)[:5]
+        for category, product_name, views in sorted_products:
+            text += f"- {product_name} ({category}): {views} vues\n"
+    else:
+        text += "Aucune vue enregistrée sur les produits.\n"
+    
+    # Ajouter le bouton de réinitialisation des stats
+    keyboard = [
+        [InlineKeyboardButton("🔄 Réinitialiser les statistiques", callback_data="confirm_reset_stats")],
+        [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
+    ]
+    
+    if update.message:
+        await update.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
 async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout de l'image bannière"""
     if not update.message.photo:
@@ -843,67 +913,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             print(f"Erreur lors de la suppression du produit: {e}")
             return await show_admin_menu(update, context)
-
-
-    elif query.data == "show_stats":
-        if 'stats' not in CATALOG:
-            CATALOG['stats'] = {
-                "total_views": 0,
-                "product_views": {},
-                "last_updated": datetime.utcnow().strftime("%H:%M:%S"),  # Format heure uniquement
-                "last_reset": datetime.utcnow().strftime("%Y-%m-%d")  # Format date uniquement
-            }
-    
-        # Nettoyer les stats avant l'affichage
-        clean_stats()
-    
-        stats = CATALOG['stats']
-        text = "📊 *Statistiques du catalogue*\n\n"
-        text += f"👥 Vues totales: {stats.get('total_views', 0)}\n"
-    
-        # Convertir le format de l'heure si nécessaire
-        last_updated = stats.get('last_updated', 'Jamais')
-        if len(last_updated) > 8:  # Si la date contient plus que HH:MM:SS
-            try:
-                last_updated = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S").strftime("%H:%M:%S")
-            except:
-                pass
-        text += f"🕒 Dernière mise à jour: {last_updated}\n"
-    
-        if 'last_reset' in stats:
-            text += f"🔄 Dernière réinitialisation: {stats.get('last_reset', 'Jamais')}\n"
-        text += "\n"
-    
-        # Vues par produit
-        text += "🔥 *Produits les plus populaires:*\n"
-        product_views = stats.get('product_views', {})
-        if product_views:
-            # Créer une liste de tous les produits existants avec leurs vues
-            all_products = []
-            for category, products in product_views.items():
-                if category in CATALOG:  # Vérifier que la catégorie existe
-                    existing_products = [p['name'] for p in CATALOG[category]]
-                    for product_name, views in products.items():
-                        if product_name in existing_products:  # Vérifier que le produit existe
-                            all_products.append((category, product_name, views))
-        
-            # Trier par nombre de vues et prendre les 5 premiers
-            sorted_products = sorted(all_products, key=lambda x: x[2], reverse=True)[:5]
-            for category, product_name, views in sorted_products:
-                text += f"- {product_name} ({category}): {views} vues\n"
-        else:
-            text += "Aucune vue enregistrée sur les produits.\n"
-    
-        # Ajouter le bouton de réinitialisation des stats
-        keyboard = [
-            [InlineKeyboardButton("🔄 Réinitialiser les statistiques", callback_data="confirm_reset_stats")],
-            [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
-        ]
-        await update.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
 
     elif query.data == "edit_contact":
         await query.message.edit_text(
