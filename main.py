@@ -1743,7 +1743,7 @@ async def clean_inactive_users(context: ContextTypes.DEFAULT_TYPE):
 
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-
+    
     # Nouveau clavier simplifié pour l'accueil
     keyboard = [
         [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
@@ -1769,25 +1769,6 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # Vérifier si une image banner est configurée
-        if CONFIG.get('banner_image'):
-            # Si un ancien message banner existe, le supprimer
-            # if 'banner_message_id' in context.user_data:
-            #     try:
-            #         await context.bot.delete_message(
-            #             chat_id=chat_id,
-            #             message_id=context.user_data['banner_message_id']
-            #         )
-            #     except:
-            #         pass
-            
-            # Envoyer la nouvelle image banner
-            banner_message = await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=CONFIG['banner_image']
-            )
-            context.user_data['banner_message_id'] = banner_message.message_id
-
         # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
         if 'menu_message_id' in context.user_data:
             try:
