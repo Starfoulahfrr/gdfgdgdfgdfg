@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import asyncio
 import shutil
@@ -606,6 +606,57 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return WAITING_BANNER_IMAGE
 
+    elif query.data == "show_stats":
+        stats_data = stats.load_stats()
+        text = "📊 *Statistiques du catalogue*\n\n"
+        text += f"👥 Vues totales: {stats_data.get('total_views', 0)}\n\n"
+        
+        text += "🔥 *Produits les plus populaires:*\n"
+        product_views = stats_data.get('product_views', {})
+        if product_views:
+            all_products = []
+            for category, products in product_views.items():
+                if category in CATALOG:  # Vérifier que la catégorie existe
+                    existing_products = [p['name'] for p in CATALOG[category]]
+                    for product_name, views in products.items():
+                        if product_name in existing_products:  # Vérifier que le produit existe
+                            all_products.append((category, product_name, views))
+            
+            # Trier par nombre de vues et prendre les 5 premiers
+            sorted_products = sorted(all_products, key=lambda x: x[2], reverse=True)[:5]
+            for category, product_name, views in sorted_products:
+                text += f"- {product_name} ({category}): {views} vues\n"
+        else:
+            text += "Aucune vue enregistrée sur les produits.\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Réinitialiser les statistiques", callback_data="reset_stats")],
+            [InlineKeyboardButton("🔙 Retour", callback_data="admin")]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return CHOOSING
+
+    elif query.data == "reset_stats":
+        stats_data = {
+            'total_views': 0,
+            'category_views': {},
+            'product_views': {},
+            'last_updated': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            'last_reset': datetime.utcnow().strftime("%Y-%m-%d")
+        }
+        stats.save_stats(stats_data)
+        await query.edit_message_text(
+            "✅ Les statistiques ont été réinitialisées.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data="admin")]]),
+            parse_mode='Markdown'
+        )
+        return CHOOSING
+
     elif query.data == "add_category":
         await query.message.edit_text(
             "📝 Veuillez entrer le nom de la nouvelle catégorie:",
@@ -935,7 +986,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data['category_message_id'] = message.message_id
 
             # Incrémenter les stats du produit
-            stats.increment_product_views(CATALOG, category, product_name)
+            stats.increment_product_views(CATALOG, category, product['name'])
 
     elif query.data.startswith(("next_media_", "prev_media_")):
             try:
