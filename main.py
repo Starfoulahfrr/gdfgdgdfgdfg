@@ -997,48 +997,54 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             return await show_admin_menu(update, context)
 
     elif query.data.startswith("product_"):
-            _, category, product_name = query.data.split("_", 2)
-            product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
-        
-            if product:
-                caption = f"📱 *{product['name']}*\n\n"
-                caption += f"💰 *Prix:*\n{product['price']}\n\n"
-                caption += f"📝 *Description:*\n{product['description']}"
-            
-                if 'media' in product and product['media']:
-                    media_list = product['media']
-                    media_list = sorted(media_list, key=lambda x: x.get('order_index', 0))
-                    total_media = len(media_list)
-                    context.user_data['current_media_index'] = 0  # AJOUTER CETTE LIGNE
-                    current_media = media_list[0]
-                
-                    keyboard = []
-                    if total_media > 1:
-                        keyboard.append([
-                            InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{category}_{product_name}"),
-                            InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{category}_{product_name}")
-                        ])
-                    keyboard.append([InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}")])
-                
-                    await query.message.delete()
-                
-                    if current_media['media_type'] == 'photo':
-                        message = await context.bot.send_photo(
-                            chat_id=query.message.chat_id,
-                            photo=current_media['media_id'],
-                            caption=caption,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                        context.user_data['last_product_message_id'] = message.message_id
-                    else:
-                        message = await context.bot.send_video(
-                            chat_id=query.message.chat_id,
-                            video=current_media['media_id'],
-                            caption=caption,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
+        _, category, product_name = query.data.split("_", 2)
+        product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
+
+        if product:
+            caption = f"📱 *{product['name']}*\n\n"
+            caption += f"💰 *Prix:*\n{product['price']}\n\n"
+            caption += f"📝 *Description:*\n{product['description']}"
+
+            keyboard = [[InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}")]]  # Assurez-vous que c'est une liste de listes
+
+            if 'media' in product and product['media']:
+                media_list = product['media']
+                media_list = sorted(media_list, key=lambda x: x.get('order_index', 0))
+                total_media = len(media_list)
+                context.user_data['current_media_index'] = 0
+                current_media = media_list[0]
+
+                if total_media > 1:
+                    keyboard.insert(0, [
+                        InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{category}_{product_name}"),
+                        InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{category}_{product_name}")
+                    ])
+
+                await query.message.delete()
+
+                if current_media['media_type'] == 'photo':
+                    message = await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=current_media['media_id'],
+                        caption=caption,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                else:
+                    message = await context.bot.send_video(
+                        chat_id=query.message.chat_id,
+                        video=current_media['media_id'],
+                        caption=caption,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                context.user_data['last_product_message_id'] = message.message_id
+            else:
+                await query.message.edit_text(
+                    text=caption,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
             if product:
                 # Incrémenter les stats du produit
                 if 'stats' not in CATALOG:
@@ -1056,6 +1062,52 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
                 save_catalog(CATALOG)
 
+
+    elif query.data.startswith("view_"):
+        category = query.data.replace("view_", "")
+        if category in CATALOG:
+            # Incrémenter le compteur total
+            if 'stats' not in CATALOG:
+                CATALOG['stats'] = {
+                    "total_views": 0,
+                    "category_views": {},
+                    "product_views": {},
+                    "last_updated": datetime.utcnow().strftime("%H:%M:%S")
+                }
+
+            # Incrémenter les vues de la catégorie
+            if 'category_views' not in CATALOG['stats']:
+                CATALOG['stats']['category_views'] = {}
+            if category not in CATALOG['stats']['category_views']:
+                CATALOG['stats']['category_views'][category] = 0
+            CATALOG['stats']['category_views'][category] += 1
+
+            CATALOG['stats']['total_views'] += 1
+            CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
+            save_catalog(CATALOG)
+
+            products = CATALOG[category]
+            # Afficher la liste des produits
+            text = f"*{category}*\n\n"
+            keyboard = []
+            for product in products:
+                keyboard.append([InlineKeyboardButton(
+                    product['name'],
+                    callback_data=f"product_{category}_{product['name']}"
+                )])
+
+            keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
+
+            try:
+                await query.message.delete()  # Supprimer le message précédent
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour du message des produits: {e}")
     # Ajoutez ces gestionnaires pour la navigation entre les médias
     elif query.data.startswith(("next_media_", "prev_media_")):
             try:
@@ -1269,50 +1321,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
-
-    elif query.data.startswith("view_"):
-        category = query.data.replace("view_", "")
-        if category in CATALOG:
-            # Incrémenter le compteur total
-            if 'stats' not in CATALOG:
-                CATALOG['stats'] = {
-                    "total_views": 0,
-                    "category_views": {},
-                    "product_views": {},
-                    "last_updated": datetime.utcnow().strftime("%H:%M:%S")
-                }
-
-            # Incrémenter les vues de la catégorie
-            if 'category_views' not in CATALOG['stats']:
-                CATALOG['stats']['category_views'] = {}
-            if category not in CATALOG['stats']['category_views']:
-                CATALOG['stats']['category_views'][category] = 0
-            CATALOG['stats']['category_views'][category] += 1
-
-            CATALOG['stats']['total_views'] += 1
-            CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
-            save_catalog(CATALOG)
-
-            products = CATALOG[category]
-            # Afficher la liste des produits
-            text = f"*{category}*\n\n"
-            keyboard = []
-            for product in products:
-                keyboard.append([InlineKeyboardButton(
-                    product['name'],
-                    callback_data=f"product_{category}_{product['name']}"
-                )])
-
-            keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-
-            try:
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-            except Exception as e:
-                print(f"Erreur lors de la mise à jour du message des produits: {e}")
                 
     elif query.data == "show_categories":
         keyboard = []
