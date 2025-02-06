@@ -1,8 +1,9 @@
-import json
+﻿import json
 import logging
 import asyncio
 import shutil
 import os
+from data import stats
 from datetime import datetime, time
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -841,7 +842,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             caption += f"💰 *Prix:*\n{product['price']}\n\n"
             caption += f"📝 *Description:*\n{product['description']}"
 
-            keyboard = [[InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}")]]  # Assurez-vous que c'est une liste de listes
+            keyboard = [[InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}")]]
 
             if 'media' in product and product['media']:
                 media_list = product['media']
@@ -882,6 +883,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     parse_mode='Markdown'
                 )
 
+            # Incrémenter les stats du produit
+            stats.increment_product_views(CATALOG, category, product_name)
+
     elif query.data.startswith("view_"):
         category = query.data.replace("view_", "")
         if category in CATALOG:
@@ -893,9 +897,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     product['name'],
                     callback_data=f"product_{category}_{product['name']}"
                 )])
-            
+        
             keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-            
+        
             try:
                 if 'last_product_message_id' in context.user_data:
                     await context.bot.delete_message(
@@ -903,12 +907,12 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                         message_id=context.user_data['last_product_message_id']
                     )
                     del context.user_data['last_product_message_id']
-                
+            
                 await context.bot.delete_message(
                     chat_id=query.message.chat_id,
                     message_id=query.message.message_id
                 )
-                
+            
                 message = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=text,
@@ -918,7 +922,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data['category_message_id'] = message.message_id
                 context.user_data['category_message_text'] = text
                 context.user_data['category_message_reply_markup'] = keyboard
-                
+            
             except Exception as e:
                 print(f"Erreur lors de la mise à jour du message des produits: {e}")
                 message = await context.bot.send_message(
@@ -928,6 +932,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     parse_mode='Markdown'
                 )
                 context.user_data['category_message_id'] = message.message_id
+
+            # Incrémenter les stats du produit
+            stats.increment_product_views(CATALOG, category, product_name)
 
     elif query.data.startswith(("next_media_", "prev_media_")):
             try:
@@ -1301,6 +1308,8 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                         InlineKeyboardButton("🔙 Retour", callback_data="admin")
                     ]])
                 )
+            # Incrémenter les stats du produit
+            stats.increment_product_views(CATALOG, category, product_name)
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler temporaire pour obtenir le file_id de l'image banner"""

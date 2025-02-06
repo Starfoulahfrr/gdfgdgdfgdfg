@@ -1,41 +1,117 @@
 {
     "stats": {
-        "total_views": 64,
-        "category_views": {
-            "test 3": 40,
-            "test numéro 2": 2
-        },
+        "total_views": 1,
+        "category_views": {},
         "product_views": {
-            "test 3": {
-                "test modif": 8
-            },
-            "test numéro 2": {
-                "test prod 1": 2
+            "test categorie zeeee": {
+                "ytttyt": 1
             }
         },
-        "last_updated": "01:29:32",
-        "last_reset": "2025-02-05"
+        "last_updated": "08:26:05",
+        "last_reset": "2025-02-06"
     },
-    "test 3": [
+    "test numéro 2": [],
+    "test categorie zeeee": [
         {
-            "name": "test modif",
-            "price": "fsfsdfsdf",
-            "description": "modification test",
+            "name": "test prod image",
+            "price": "18 prod",
+            "description": "test prod test",
             "media": [
                 {
-                    "media_id": "AgACAgQAAxkBAAIIVGejwc38oUlLxskXPEiR-9PWlRSmAAJUxzEbm-0hURoFyQpG86agAQADAgADeQADNgQ",
+                    "media_id": "AgACAgQAAxkBAAIKsGekM2xjBrFAzdYMnqmBZTILV9TaAAKpxjEb79chUbDp2TJ5xoeXAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIKsWekM2zroyKjwBwkL8E5DLgO0hKyAAKuxjEb79chUURLSNnfRIcZAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 2
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIKsmekM2xxecxa7LIj4Y0yFXFjg4CgAAKtxjEb79chUfBOc0q9jXORAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 3
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIKs2ekM2wMi3JkRujoDpPuJomK4b57AAKqxjEb79chUWEesgJV7-N0AQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 4
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIKtGekM2x2LUuY0io6gQ8MC6MkIFDNAAKsxjEb79chUSmMFNv8jHqZAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 5
+                },
+                {
+                    "media_id": "AgACAgQAAxkBAAIKtWekM2wZVnBkq0EUciC0YuHYZxTWAAKrxjEb79chUTdUsO1BbeyEAQADAgADbQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 6
+                }
+            ]
+        },
+        {
+            "name": "fsdfsdfsd",
+            "price": "fdsfsdfsdf",
+            "description": "fdsfsdfsdf",
+            "media": []
+        },
+        {
+            "name": "Test",
+            "price": "Test",
+            "description": "Test"
+        },
+        {
+            "name": "ytttyt",
+            "price": "ytyrtyrtyrty",
+            "description": "yrtyrty"
+        },
+        {
+            "name": "dsqdqqsd",
+            "price": "qsqdqsd",
+            "description": "qdqsdqs",
+            "media": [
+                {
+                    "media_id": "AgACAgQAAxkBAAIMO2ekZMWv7oD5pmZaNL6qeVQNBYPtAALnxjEb79chUcchKAAB4EBMqQEAAwIAA20AAzYE",
                     "media_type": "photo",
                     "order_index": 1
                 }
             ]
         }
     ],
-    "test numéro 2": [
+    "DD": [
         {
-            "name": "test prod 1",
-            "price": "test",
-            "description": "test",
-            "media": []
+            "name": "dsdq",
+            "price": "dsqdsqd",
+            "description": "sdqsdq"
+        },
+        {
+            "name": "dsqdqsd",
+            "price": "dsqdqsdqsd",
+            "description": "dqsdqsdq",
+            "media": [
+                {
+                    "media_id": "AgACAgQAAxkBAAILwWekUWLJcy4IZzMjdRkTNnQW3ceFAALCxjEb79chUVVfuiMCeJSiAQADAgADeQADNgQ",
+                    "media_type": "photo",
+                    "order_index": 1
+                }
+            ]
+        },
+        {
+            "name": "dqsdqssqd",
+            "price": "sqdzdqzd",
+            "description": "dfdsfs",
+            "media": [
+                {
+                    "media_id": "AgACAgQAAxkBAAIMO2ekZMWv7oD5pmZaNL6qeVQNBYPtAALnxjEb79chUcchKAAB4EBMqQEAAwIAA20AAzYE",
+                    "media_type": "photo",
+                    "order_index": 1
+                }
+            ]
+        },
+        {
+            "name": "dqsdqd",
+            "price": "sqdqsd",
+            "description": "dsqdqsd"
         }
     ]
 }
