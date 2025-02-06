@@ -1684,7 +1684,7 @@ async def clean_inactive_users(context: ContextTypes.DEFAULT_TYPE):
 
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    
+
     # Nouveau clavier simplifié pour l'accueil
     keyboard = [
         [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
@@ -1698,33 +1698,33 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.extend([
         [
             InlineKeyboardButton("📞 Contact telegram", url=f"https://t.me/{CONFIG['contact_username']}"),
-            InlineKeyboardButton("📝 Canal telegram", url="https://t.me/+LT2G6gMsMjY3MWFk"),
+            InlineKeyboardButton("📝 Exemple bouton 1", url="https://www.google.fr/"),
         ],
-        [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
+        [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
     ])
     
     welcome_text = (
-        "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
-        "Ceci n'est pas le produit final.\n"
-        "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
+        "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
+        "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
         "📋 Cliquez sur MENU pour voir les catégories"
     )
 
     try:
-        # Mettre à jour le message du menu des catégories existant au lieu d'en créer un nouveau
-        if 'categories_menu_message_id' in context.user_data:
+        # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
+        if 'menu_message_id' in context.user_data:
             try:
-                await context.bot.edit_message_text(
+                message = await context.bot.edit_message_text(
                     chat_id=chat_id,
-                    message_id=context.user_data['categories_menu_message_id'],
+                    message_id=context.user_data['menu_message_id'],
                     text=welcome_text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
-                context.user_data['menu_message_id'] = context.user_data['categories_menu_message_id']
-                del context.user_data['categories_menu_message_id']
-            except:
-                pass
+                # Vérifier si le message a été modifié
+                if message.text == welcome_text and message.reply_markup.inline_keyboard == keyboard:
+                    return CHOOSING
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour du message d'accueil: {e}")
         else:
             menu_message = await context.bot.send_message(
                 chat_id=chat_id,
@@ -1733,7 +1733,16 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
             context.user_data['menu_message_id'] = menu_message.message_id
-        
+
+        # Vérifier si une image banner est configurée et si elle n'existe pas déjà
+        if CONFIG.get('banner_image') and 'banner_message_id' not in context.user_data:
+            # Envoyer la nouvelle image bannière
+            banner_message = await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=CONFIG['banner_image']
+            )
+            context.user_data['banner_message_id'] = banner_message.message_id
+
     except Exception as e:
         print(f"Erreur lors du retour à l'accueil: {e}")
 
