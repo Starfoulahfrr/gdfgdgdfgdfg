@@ -252,6 +252,7 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📢 Envoyer une annonce", callback_data="start_broadcast")],
         [InlineKeyboardButton("👥 Gérer utilisateurs", callback_data="manage_users")],
         [InlineKeyboardButton("🖼️ Modifier image bannière", callback_data="edit_banner_image")],
+        [InlineKeyboardButton("📊 Voir les statistiques", callback_data="show_stats")],
         [InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")]
     ]
 
