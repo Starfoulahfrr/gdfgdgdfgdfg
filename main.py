@@ -3,13 +3,11 @@ import logging
 import asyncio
 import shutil
 import os
-import re
-import sys
 from datetime import datetime, time
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, 
+    Application, 
     CommandHandler, 
     CallbackQueryHandler, 
     MessageHandler, 
@@ -27,8 +25,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
-        logging.StreamHandler(stream=sys.stdout)
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
@@ -45,9 +43,6 @@ except FileNotFoundError:
 except KeyError as e:
     print(f"Erreur: La clé {e} est manquante dans le fichier config.json!")
     exit(1)
-
-# Fichier JSON pour stocker le message d'accueil
-CONFIG_FILE = 'data/welcome_message.json'
 
 # Fonctions de gestion du catalogue
 def load_catalog():
@@ -182,28 +177,8 @@ def print_catalog_debug():
                 if 'media' in product:
                     print(f"    Médias ({len(product['media'])}): {product['media']}")
 
-def contains_premium_emoji(text):
-    """Vérifie si le texte contient des emojis premium"""
-    premium_emoji_pattern = re.compile(r'[\U0001F600-\U0001F64F]')  # Exemple de pattern pour détecter les emojis premium
-    return bool(premium_emoji_pattern.search(text))
-
-# Fonction pour lire le message d'accueil depuis le fichier JSON
-def read_welcome_message():
-    with open(CONFIG_FILE, 'r', encoding='utf-8') as file:
-        config = json.load(file)
-        return config.get('welcome_message', '')
-
-# Fonction pour écrire le message d'accueil dans le fichier JSON
-def write_welcome_message(message):
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as file:
-        json.dump({'welcome_message': message}, file, ensure_ascii=False, indent=4)
-
-
-
-
 # États de conversation
-WAITING_WELCOME_MESSAGE = range(1)
-CHOOSING = range(1)
+CHOOSING = "CHOOSING"
 WAITING_CATEGORY_NAME = "WAITING_CATEGORY_NAME"
 WAITING_PRODUCT_NAME = "WAITING_PRODUCT_NAME"
 WAITING_PRODUCT_PRICE = "WAITING_PRODUCT_PRICE"
@@ -218,7 +193,6 @@ EDITING_PRODUCT_FIELD = "EDITING_PRODUCT_FIELD"
 WAITING_NEW_VALUE = "WAITING_NEW_VALUE"
 WAITING_BROADCAST_MESSAGE = "WAITING_BROADCAST_MESSAGE"
 WAITING_BANNER_IMAGE = "WAITING_BANNER_IMAGE"
-WAITING_WELCOME_MESSAGE = "WAITING_WELCOME_MESSAGE"
 
 # Charger le catalogue au démarrage
 CATALOG = load_catalog()
@@ -282,7 +256,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
     ])
     
-    welcome_text = read_welcome_message()
+    welcome_text = (
+        "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
+        "Parcourez notre menu en toutes tranquilité !\n"
+        "Ce bot est juste un bot MENU, nous ne prenons AUCUNE COMMANDES DESSUS.\n\n"
+        "📋 Cliquez sur MENU pour voir les catégories"
+    )
 
     try:
         # Vérifier si une image banner est configurée
@@ -309,7 +288,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='MarkdownV2'
+            parse_mode='Markdown'
         )
         context.user_data['menu_message_id'] = menu_message.message_id
         
@@ -320,12 +299,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='MarkdownV2'
+            parse_mode='Markdown'
         )
         context.user_data['menu_message_id'] = menu_message.message_id
     
     return CHOOSING
-
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Commande pour accéder au menu d'administration"""
@@ -348,7 +326,6 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📢 Envoyer une annonce", callback_data="start_broadcast")],
         [InlineKeyboardButton("👥 Gérer utilisateurs", callback_data="manage_users")],
         [InlineKeyboardButton("🖼️ Modifier image bannière", callback_data="edit_banner_image")],
-        [InlineKeyboardButton("📝 Modifier message d'accueil", callback_data="edit_welcome_message")],
         [InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")]
     ]
 
@@ -381,45 +358,6 @@ async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return CHOOSING
 
-async def check_premium_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Vérifie si le message contient des emojis premium et envoie un message d'erreur le cas échéant"""
-    message = update.message.text
-    logger.info(f"Vérification des emojis premium dans le message: {message}")
-    
-    if contains_premium_emoji(message):
-        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
-        logger.info("Emojis premium détectés et message d'erreur envoyé")
-        return True
-    
-    logger.info("Aucun emoji premium détecté")
-    return False
-
-async def handle_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gère la modification du message d'accueil"""
-    message = update.message.text
-    if contains_premium_emoji(message):
-        await update.message.reply_text("❌ Les emojis premium ne sont pas pris en charge. Veuillez utiliser des emojis standards.")
-        return WAITING_WELCOME_MESSAGE
-
-    welcome_message = message
-    logger.info(f"Nouveau message d'accueil reçu: {welcome_message}")
-
-    # Sauvegarder le message d'accueil dans la configuration
-    CONFIG['welcome_message'] = welcome_message
-
-    try:
-        with open('config/config.json', 'w', encoding='utf-8') as f:
-            json.dump(CONFIG, f, indent=4)
-        logger.info("Message d'accueil sauvegardé dans la configuration")
-    except Exception as e:
-        logger.error(f"Erreur lors de la sauvegarde du message d'accueil: {e}")
-        await update.message.reply_text("❌ Une erreur s'est produite lors de la sauvegarde du message d'accueil.")
-
-    await update.message.reply_text("✅ Message d'accueil mis à jour avec succès !")
-    logger.info("Message d'accueil mis à jour avec succès")
-
-    return await show_admin_menu(update, context)
-
 async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout de l'image bannière"""
     if not update.message.photo:
@@ -445,43 +383,7 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     return await show_admin_menu(update, context)
 
-async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Demander à l'utilisateur d'entrer un nouveau message d'accueil."""
-    example_message = (
-        "*Formatage du texte*\n"
-        "Vous pouvez formater votre texte de différentes manières :\n\n"
-        "*Gras* : \\`\\*texte\\*\\`\n"
-        "_Italique_ : \\`\\_texte\\_\\`\n"
-        "__Souligné__ : \\`\\__texte\\__\\`\n"
-        "~Barré~ : \\`\\~texte\\~\\`\n"
-        "\\``Code\\`` : \\`\\`texte\\`\\`\n"
-    )
 
-    await update.callback_query.edit_message_text(
-        f"{example_message}\n\nVeuillez entrer votre nouveau message d'accueil \\(émojis prémium impossible\\) :",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]]),
-        parse_mode='MarkdownV2'
-    )
-    return WAITING_WELCOME_MESSAGE
-
-async def save_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sauvegarder le nouveau message d'accueil entré par l'utilisateur."""
-    new_welcome_message = update.message.text
-    write_welcome_message(new_welcome_message)
-
-    await update.message.reply_text(
-        "Le message d'accueil a été mis à jour\\!",
-        parse_mode='MarkdownV2'
-    )
-    return ConversationHandler.END
-
-async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Annuler la modification du message d'accueil."""
-    await update.callback_query.edit_message_text(
-        "Modification du message d'accueil annulée\\.",
-        parse_mode='MarkdownV2'
-    )
-    return ConversationHandler.END
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
@@ -882,9 +784,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 ]])
             )
         return CHOOSING
-
-    elif query.data == "edit_welcome_message":
-        return await edit_welcome_message(update, context)
 
     elif query.data == "delete_product":
         keyboard = []
@@ -1479,17 +1378,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     message_id=context.user_data['menu_message_id']
                 )
             except:
-                logger.warning("Impossible de supprimer l'ancien message d'accueil")
-
-        # Supprimer l'ancien message du menu des catégories
-        if 'categories_menu_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=chat_id,
-                    message_id=context.user_data['categories_menu_message_id']
-                )
-            except:
-                logger.warning("Impossible de supprimer l'ancien message du menu des catégories")
+                pass
 
         # Supprimer l'ancienne image bannière
         if 'banner_message_id' in context.user_data:
@@ -1499,7 +1388,17 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     message_id=context.user_data['banner_message_id']
                 )
             except:
-                logger.warning("Impossible de supprimer l'ancienne image bannière")
+                pass
+
+                # Supprimer l'ancien message du menu des catégories
+        if 'categories_menu_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=context.user_data['categories_menu_message_id']
+                )
+            except:
+                pass
 
         # Nouveau clavier simplifié pour l'accueil
         keyboard = [
@@ -1519,7 +1418,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/5ZEmn25bOsTR7f-aYdvC0Q")]
         ])
         
-        welcome_text = CONFIG.get('welcome_message', 
+        welcome_text = (
             "🌿 *Bienvenue sur le bot test de DDLAD* 🌿\n\n"
             "Ceci n'est pas le produit final.\n"
             "Ce bot est juste un bot test, pour tester mes conneries dessus.\n\n"
@@ -1546,7 +1445,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data['menu_message_id'] = menu_message.message_id
             
         except Exception as e:
-            logger.error(f"Erreur lors du retour à l'accueil: {e}")
+            print(f"Erreur lors du retour à l'accueil: {e}")
 
         return CHOOSING
 
@@ -1849,95 +1748,92 @@ def main():
     """Fonction principale du bot"""
     try:
         # Créer l'application
-        application = ApplicationBuilder().token(TOKEN).build()
+        application = Application.builder().token(TOKEN).build()
 
         # Gestionnaire de conversation principal
         conv_handler = ConversationHandler(
-            entry_points=[
-                CommandHandler('start', start),
-                CommandHandler('admin', admin),
+        entry_points=[
+            CommandHandler('start', start),
+            CommandHandler('admin', admin),
+        ],
+        states={
+            CHOOSING: [
+                CallbackQueryHandler(handle_normal_buttons),
             ],
-            states={
-                CHOOSING: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_CATEGORY_NAME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_category_name),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_PRODUCT_NAME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_PRODUCT_PRICE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_price),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_PRODUCT_DESCRIPTION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_description),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_PRODUCT_MEDIA: [
-                    MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                SELECTING_CATEGORY: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                SELECTING_CATEGORY_TO_DELETE: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                SELECTING_PRODUCT_TO_DELETE: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_CONTACT_USERNAME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_contact_username),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                SELECTING_PRODUCT_TO_EDIT: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                EDITING_PRODUCT_FIELD: [
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_NEW_VALUE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_WELCOME_MESSAGE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, save_welcome_message),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_BANNER_IMAGE: [
-                    MessageHandler(filters.PHOTO, handle_banner_image),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_PRODUCT_MEDIA: [
-                    MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
-                    CallbackQueryHandler(finish_product_media, pattern="^finish_media$"),
-                    CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_BROADCAST_MESSAGE: [
-                    MessageHandler(
-                        (filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND,
-                        handle_broadcast_message
-                    ),
-                    CallbackQueryHandler(
-                        lambda u, c: show_admin_menu(u, c),
-                        pattern="cancel_broadcast"
-                    ),
-                ],
-            },
-            fallbacks=[
-                CommandHandler('start', start),
-                CommandHandler('admin', admin),
+            WAITING_CATEGORY_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_category_name),
+                CallbackQueryHandler(handle_normal_buttons),
             ],
-            name="main_conversation",
-            persistent=False,
-        )
+            WAITING_PRODUCT_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_PRODUCT_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_price),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_PRODUCT_DESCRIPTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_description),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_PRODUCT_MEDIA: [
+                MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            SELECTING_CATEGORY: [
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            SELECTING_CATEGORY_TO_DELETE: [
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            SELECTING_PRODUCT_TO_DELETE: [
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_CONTACT_USERNAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_contact_username),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            SELECTING_PRODUCT_TO_EDIT: [
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            EDITING_PRODUCT_FIELD: [
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_NEW_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_value),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_BANNER_IMAGE: [
+                MessageHandler(filters.PHOTO, handle_banner_image),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_PRODUCT_MEDIA: [
+                MessageHandler(filters.PHOTO | filters.VIDEO, handle_product_media),
+                CallbackQueryHandler(finish_product_media, pattern="^finish_media$"),
+                CallbackQueryHandler(handle_normal_buttons),
+            ],
+            WAITING_BROADCAST_MESSAGE: [
+    MessageHandler(
+        (filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND,  # Parenthèses corrigées
+        handle_broadcast_message
+    ),
+    CallbackQueryHandler(
+        lambda u, c: show_admin_menu(u, c),
+        pattern="cancel_broadcast"
+    ),
+],
+         
+        },
+        fallbacks=[
+            CommandHandler('start', start),
+            CommandHandler('admin', admin),
+        ],
+        name="main_conversation",
+        persistent=False,
+    )
+    
         application.add_handler(conv_handler)
         application.job_queue.run_daily(daily_maintenance, time=time(hour=0, minute=0))
-
         # Démarrer le bot
         print("Bot démarré...")
         application.run_polling()
