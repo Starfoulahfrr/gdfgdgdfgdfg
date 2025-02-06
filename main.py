@@ -1062,30 +1062,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
                 save_catalog(CATALOG)
 
-
     elif query.data.startswith("view_"):
         category = query.data.replace("view_", "")
         if category in CATALOG:
-            # Incrémenter le compteur total
-            if 'stats' not in CATALOG:
-                CATALOG['stats'] = {
-                    "total_views": 0,
-                    "category_views": {},
-                    "product_views": {},
-                    "last_updated": datetime.utcnow().strftime("%H:%M:%S")
-                }
-
-            # Incrémenter les vues de la catégorie
-            if 'category_views' not in CATALOG['stats']:
-                CATALOG['stats']['category_views'] = {}
-            if category not in CATALOG['stats']['category_views']:
-                CATALOG['stats']['category_views'][category] = 0
-            CATALOG['stats']['category_views'][category] += 1
-
-            CATALOG['stats']['total_views'] += 1
-            CATALOG['stats']['last_updated'] = datetime.utcnow().strftime("%H:%M:%S")
-            save_catalog(CATALOG)
-
             products = CATALOG[category]
             # Afficher la liste des produits
             text = f"*{category}*\n\n"
@@ -1099,16 +1078,39 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
 
             try:
-                await query.message.delete()  # Supprimer le message précédent
-                await context.bot.send_message(
+                # Suppression du dernier message de produit (photo ou vidéo)
+                if 'last_product_message_id' in context.user_data:
+                    await context.bot.delete_message(
+                        chat_id=query.message.chat_id,
+                        message_id=context.user_data['last_product_message_id']
+                    )
+                    del context.user_data['last_product_message_id']
+                
+                await context.bot.delete_message(
+                    chat_id=query.message.chat_id,
+                    message_id=query.message.message_id
+                )
+                
+                message = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
+                context.user_data['category_message_id'] = message.message_id
+                context.user_data['category_message_text'] = text
+                context.user_data['category_message_reply_markup'] = keyboard
             except Exception as e:
                 print(f"Erreur lors de la mise à jour du message des produits: {e}")
-    # Ajoutez ces gestionnaires pour la navigation entre les médias
+                # Si la mise à jour échoue, recréez le message
+                message = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                context.user_data['category_message_id'] = message.message_id
+
     elif query.data.startswith(("next_media_", "prev_media_")):
             try:
                 _, direction, category, product_name = query.data.split("_", 3)
@@ -1328,16 +1330,29 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         for category in CATALOG.keys():
             if category != 'stats':
                 keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
-        
+
         # Ajouter uniquement le bouton retour à l'accueil
         keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
-        
-        await query.edit_message_text(
-            "📋 *Menu*\n\n"
-            "Choisissez une catégorie pour voir les produits :",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+
+        try:
+            message = await query.edit_message_text(
+                "📋 *Menu*\n\n"
+                "Choisissez une catégorie pour voir les produits :",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_message_id'] = message.message_id
+        except Exception as e:
+            print(f"Erreur lors de la mise à jour du message des catégories: {e}")
+            # Si la mise à jour échoue, recréez le message
+            message = await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="📋 *Menu*\n\n"
+                     "Choisissez une catégorie pour voir les produits :",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_message_id'] = message.message_id
 
     elif query.data == "back_to_home":
         chat_id = update.effective_chat.id
@@ -1359,7 +1374,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             ],
             [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
         ])
-    
+
         welcome_text = (
             "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
             "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
@@ -1379,6 +1394,14 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     )
                 except Exception as e:
                     print(f"Erreur lors de la mise à jour du message d'accueil: {e}")
+                    # Si la mise à jour échoue, recréez le message
+                    menu_message = await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=welcome_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['menu_message_id'] = menu_message.message_id
             else:
                 menu_message = await context.bot.send_message(
                     chat_id=chat_id,
@@ -1387,16 +1410,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     parse_mode='Markdown'
                 )
                 context.user_data['menu_message_id'] = menu_message.message_id
-
-            # Vérifier si une image banner est configurée et si elle n'existe pas déjà
-            if CONFIG.get('banner_image') and 'banner_message_id' not in context.user_data:
-                # Envoyer la nouvelle image bannière
-                banner_message = await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=CONFIG['banner_image']
-                )
-                context.user_data['banner_message_id'] = banner_message.message_id
-
         except Exception as e:
             print(f"Erreur lors du retour à l'accueil: {e}")
 
