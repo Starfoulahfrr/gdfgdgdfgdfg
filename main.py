@@ -609,7 +609,13 @@ async def finish_product_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
     context.user_data.clear()
 
-    return await show_admin_menu(update, context)
+    # Appel à show_admin_menu pour mettre à jour l'ID du message du menu admin
+    result = await show_admin_menu(update, context)
+    # Assurez-vous de mettre à jour context.user_data['menu_message_id']
+    if hasattr(result, 'message_id'):
+        context.user_data['menu_message_id'] = result.message_id
+
+    return result
 
 async def handle_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la nouvelle valeur pour le champ en cours de modification"""
