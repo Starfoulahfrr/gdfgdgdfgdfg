@@ -508,7 +508,7 @@ async def handle_product_description(update: Update, context: ContextTypes.DEFAU
     # Envoyer et sauvegarder l'ID du message d'invitation
     invitation_message = await update.message.reply_text(
         "📸 Envoyez les photos ou vidéos du produit (plusieurs possibles)\n"
-        "*Si vous ne voulez pas en envoyer, cliquez sur ignorer* :",
+        "Si vous ne voulez pas en envoyer, cliquez sur ignorer* :",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⏩ Ignorer", callback_data="skip_media")],
             [InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")]
@@ -1730,7 +1730,7 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [InlineKeyboardButton("🥔 Exemple bouton 2", url="https://www.google.fr")]
     ])
-    
+
     welcome_text = (
         "🌿 *Bienvenue sur mon bot test !* 🌿\n\n"
         "Ce bot est juste un bot MENU en TEST, vous pouvez voir les fonctionnalités UTILISATEUR.\n\n"
@@ -1741,18 +1741,23 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Mettre à jour le menu d'accueil existant au lieu d'en créer un nouveau
         if 'menu_message_id' in context.user_data:
             try:
-                message = await context.bot.edit_message_text(
+                await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=context.user_data['menu_message_id'],
                     text=welcome_text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
-                # Vérifier si le message a été modifié
-                if message.text == welcome_text and message.reply_markup.inline_keyboard == keyboard:
-                    return CHOOSING
             except Exception as e:
                 print(f"Erreur lors de la mise à jour du message d'accueil: {e}")
+                # Si la mise à jour échoue, recréez le message
+                menu_message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=welcome_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                context.user_data['menu_message_id'] = menu_message.message_id
         else:
             menu_message = await context.bot.send_message(
                 chat_id=chat_id,
