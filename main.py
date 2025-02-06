@@ -679,6 +679,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
             return CHOOSING
 
+    elif query.data == "back_to_home":
+        return await back_to_home(update, context)
+
     elif query.data == "edit_banner_image":
         await query.message.edit_text(
             "📸 Veuillez envoyer la nouvelle image bannière :",
@@ -1763,15 +1766,6 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
             context.user_data['menu_message_id'] = menu_message.message_id
-
-        # Vérifier si une image banner est configurée et si elle n'existe pas déjà
-        if CONFIG.get('banner_image') and 'banner_message_id' not in context.user_data:
-            # Envoyer la nouvelle image bannière
-            banner_message = await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=CONFIG['banner_image']
-            )
-            context.user_data['banner_message_id'] = banner_message.message_id
 
     except Exception as e:
         print(f"Erreur lors du retour à l'accueil: {e}")
