@@ -307,14 +307,6 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
         return ConversationHandler.END
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Commande pour accéder au menu d'administration"""
-    if str(update.effective_user.id) in ADMIN_IDS:
-        return await show_admin_menu(update, context)
-    else:
-        await update.message.reply_text("❌ Vous n'êtes pas autorisé à accéder au menu d'administration.")
-        return ConversationHandler.END
-
 async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Affiche le menu d'administration"""
     keyboard = [
