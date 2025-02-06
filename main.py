@@ -1410,6 +1410,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     parse_mode='Markdown'
                 )
                 context.user_data['menu_message_id'] = menu_message.message_id
+
         except Exception as e:
             print(f"Erreur lors du retour à l'accueil: {e}")
 
