@@ -46,6 +46,9 @@ except KeyError as e:
     print(f"Erreur: La clé {e} est manquante dans le fichier config.json!")
     exit(1)
 
+# Fichier JSON pour stocker le message d'accueil
+CONFIG_FILE = 'welcome_message.json'
+
 # Fonctions de gestion du catalogue
 def load_catalog():
     try:
@@ -184,8 +187,23 @@ def contains_premium_emoji(text):
     premium_emoji_pattern = re.compile(r'[\U0001F600-\U0001F64F]')  # Exemple de pattern pour détecter les emojis premium
     return bool(premium_emoji_pattern.search(text))
 
+# Fonction pour lire le message d'accueil depuis le fichier JSON
+def read_welcome_message():
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as file:
+        config = json.load(file)
+        return config.get('welcome_message', '')
+
+# Fonction pour écrire le message d'accueil dans le fichier JSON
+def write_welcome_message(message):
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as file:
+        json.dump({'welcome_message': message}, file, ensure_ascii=False, indent=4)
+
+
+
+
 # États de conversation
-CHOOSING = "CHOOSING"
+WAITING_WELCOME_MESSAGE = range(1)
+CHOOSING = range(1)
 WAITING_CATEGORY_NAME = "WAITING_CATEGORY_NAME"
 WAITING_PRODUCT_NAME = "WAITING_PRODUCT_NAME"
 WAITING_PRODUCT_PRICE = "WAITING_PRODUCT_PRICE"
@@ -264,12 +282,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🥔 Canal potato", url="https://doudlj.org/joinchat/QwqUM5gH7Q8VqO3SnS4YwA")]
     ])
     
-    welcome_text = (
-        "🌿 *Bienvenue sur le bot du Pays Des Merveilles !* 🌿\n\n"
-        "Parcourez notre menu en toutes tranquilité !\n"
-        "Ce bot est juste un bot MENU, nous ne prenons AUCUNE COMMANDES DESSUS.\n\n"
-        "📋 Cliquez sur MENU pour voir les catégories"
-    )
+    welcome_text = read_welcome_message()
 
     try:
         # Vérifier si une image banner est configurée
@@ -296,7 +309,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            parse_mode='MarkdownV2'
         )
         context.user_data['menu_message_id'] = menu_message.message_id
         
@@ -307,11 +320,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            parse_mode='MarkdownV2'
         )
         context.user_data['menu_message_id'] = menu_message.message_id
     
     return CHOOSING
+
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Commande pour accéder au menu d'administration"""
@@ -431,8 +445,8 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     return await show_admin_menu(update, context)
 
-
 async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Demander à l'utilisateur d'entrer un nouveau message d'accueil."""
     example_message = (
         "*Formatage du texte*\n"
         "Vous pouvez formater votre texte de différentes manières :\n\n"
@@ -444,11 +458,30 @@ async def edit_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     await update.callback_query.edit_message_text(
-        f"{example_message}\nVeuillez entrer votre nouveau message d'accueil \\(*émojis premium impossible*\\) :",
+        f"{example_message}\n\nVeuillez entrer votre nouveau message d'accueil \\(émojis prémium impossible\\) :",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")]]),
         parse_mode='MarkdownV2'
     )
     return WAITING_WELCOME_MESSAGE
+
+async def save_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sauvegarder le nouveau message d'accueil entré par l'utilisateur."""
+    new_welcome_message = update.message.text
+    write_welcome_message(new_welcome_message)
+
+    await update.message.reply_text(
+        "Le message d'accueil a été mis à jour\\!",
+        parse_mode='MarkdownV2'
+    )
+    return ConversationHandler.END
+
+async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Annuler la modification du message d'accueil."""
+    await update.callback_query.edit_message_text(
+        "Modification du message d'accueil annulée\\.",
+        parse_mode='MarkdownV2'
+    )
+    return ConversationHandler.END
 
 async def daily_maintenance(context: ContextTypes.DEFAULT_TYPE):
     """Tâches de maintenance quotidiennes"""
