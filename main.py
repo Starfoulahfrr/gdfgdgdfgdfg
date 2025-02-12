@@ -784,7 +784,8 @@ async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(3)
             await error_msg.delete()
             return
-    
+
+    # Supprimer UNIQUEMENT le message "partie terminée" s'il existe
     if chat_id in last_end_game_message:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=last_end_game_message[chat_id])
@@ -1151,7 +1152,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
                 text="🎰 *La partie est terminée!*\n"
-                     "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
+                        "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
                 parse_mode=ParseMode.MARKDOWN
             )
             last_end_game_message[chat_id] = end_message.message_id
