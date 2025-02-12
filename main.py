@@ -902,9 +902,16 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard = []
         for category in CATALOG.keys():
             if category != 'stats':
-                keyboard.append([InlineKeyboardButton(category, callback_data=f"select_category_{category}")])
+                # Limite la taille du callback_data à 30 caractères tout en gardant le nom complet pour l'affichage
+                short_category = category[:30]
+                keyboard.append([
+                    InlineKeyboardButton(
+                        category,  # Garde le nom complet pour l'affichage
+                        callback_data=f"select_category_{short_category}"  # Version courte pour le callback
+                    )
+                ])
         keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")])
-        
+
         await query.message.edit_text(
             "📝 Sélectionnez la catégorie pour le nouveau produit:",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -912,11 +919,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return SELECTING_CATEGORY
 
     elif query.data.startswith("select_category_"):
-        # Ne traiter que si ce n'est PAS une action de suppression
-        if not query.data.startswith("select_category_to_delete_"):
-            category = query.data.replace("select_category_", "")
+        short_category = query.data.replace("select_category_", "")
+        # Find the full category name that starts with the shortened version
+        category = next((cat for cat in CATALOG.keys() if cat.startswith(short_category)), None)
+        if category:
             context.user_data['temp_product_category'] = category
-            
             await query.message.edit_text(
                 "📝 Veuillez entrer le nom du nouveau produit:",
                 reply_markup=InlineKeyboardMarkup([[
@@ -924,6 +931,9 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 ]])
             )
             return WAITING_PRODUCT_NAME
+        else:
+            await query.answer("Catégorie non trouvée", show_alert=True)
+            return await show_admin_menu(update, context)
 
     elif query.data.startswith("delete_product_category_"):
         category = query.data.replace("delete_product_category_", "")
