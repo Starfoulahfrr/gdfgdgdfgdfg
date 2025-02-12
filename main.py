@@ -266,7 +266,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         context.user_data['menu_message_id'] = menu_message.message_id
     
@@ -1391,97 +1391,104 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                             save_catalog(CATALOG)
 
     elif query.data.startswith("view_"):
-        category = query.data.replace("view_", "")
-        if category in CATALOG:
-            # Initialisation des stats si nécessaire
-            if 'stats' not in CATALOG:
-                CATALOG['stats'] = {
-                    "total_views": 0,
-                    "category_views": {},
-                    "product_views": {},
-                    "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
-                }
+            category = query.data.replace("view_", "")
+            if category in CATALOG:
+                # Initialisation des stats si nécessaire
+                if 'stats' not in CATALOG:
+                    CATALOG['stats'] = {
+                        "total_views": 0,
+                        "category_views": {},
+                        "product_views": {},
+                        "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
+                    }
 
-            if 'category_views' not in CATALOG['stats']:
-                CATALOG['stats']['category_views'] = {}
+                if 'category_views' not in CATALOG['stats']:
+                    CATALOG['stats']['category_views'] = {}
     
-            if category not in CATALOG['stats']['category_views']:
-                CATALOG['stats']['category_views'][category] = 0
+                if category not in CATALOG['stats']['category_views']:
+                    CATALOG['stats']['category_views'][category] = 0
     
-            # Mettre à jour les statistiques
-            CATALOG['stats']['category_views'][category] += 1
-            CATALOG['stats']['total_views'] += 1
-            CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
-            save_catalog(CATALOG)
+                # Mettre à jour les statistiques de catégorie
+                CATALOG['stats']['category_views'][category] += 1
+                CATALOG['stats']['total_views'] += 1
+                CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
+                save_catalog(CATALOG)
 
-            products = CATALOG[category]
-            # Afficher la liste des produits
-            text = f"*{category}*\n\n"
-            keyboard = []
-            for product in products:
-                keyboard.append([InlineKeyboardButton(
-                    product['name'],
-                    callback_data=f"product_{category[:10]}_{product['name'][:20]}"
-                )])
+                products = CATALOG[category]
+                # Afficher la liste des produits
+                text = f"*{category}*\n\n"
+                keyboard = []
+            
+                # Vérifier si la catégorie contient des produits
+                if not products:
+                    text += "Cette catégorie est vide."
+                else:
+                    for product in products:
+                        keyboard.append([InlineKeyboardButton(
+                            product['name'],
+                            callback_data=f"product_{category[:10]}_{product['name'][:20]}"
+                        )])
 
-            keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
+                keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
 
-            try:
-                # Suppression du dernier message de produit (photo ou vidéo)
-                if 'last_product_message_id' in context.user_data:
+                try:
+                    # Suppression du dernier message de produit (photo ou vidéo)
+                    if 'last_product_message_id' in context.user_data:
+                        await context.bot.delete_message(
+                            chat_id=query.message.chat_id,
+                            message_id=context.user_data['last_product_message_id']
+                        )
+                        del context.user_data['last_product_message_id']
+            
                     await context.bot.delete_message(
                         chat_id=query.message.chat_id,
-                        message_id=context.user_data['last_product_message_id']
+                        message_id=query.message.message_id
                     )
-                    del context.user_data['last_product_message_id']
-            
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=query.message.message_id
-                )
-                print(f"Texte du message : {text}")
-                print(f"Clavier : {keyboard}")
-                message = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-                context.user_data['category_message_id'] = message.message_id
-                context.user_data['category_message_text'] = text
-                context.user_data['category_message_reply_markup'] = keyboard
-            except Exception as e:
-                print(f"Erreur lors de la mise à jour du message des produits: {e}")
-                # Si la mise à jour échoue, recréez le message
-                message = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-                context.user_data['category_message_id'] = message.message_id
+                    print(f"Texte du message : {text}")
+                    print(f"Clavier : {keyboard}")
+                    message = await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['category_message_id'] = message.message_id
+                    context.user_data['category_message_text'] = text
+                    context.user_data['category_message_reply_markup'] = keyboard
+                except Exception as e:
+                    print(f"Erreur lors de la mise à jour du message des produits: {e}")
+                    # Si la mise à jour échoue, recréez le message
+                    message = await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['category_message_id'] = message.message_id
 
-            # Mettre à jour les stats
-            if 'stats' not in CATALOG:
-                CATALOG['stats'] = {
-                    "total_views": 0,
-                    "category_views": {},
-                    "product_views": {},
-                    "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S"),
-                    "last_reset": datetime.now(paris_tz).strftime("%Y-%m-%d")
-                }
+                # Mettre à jour les stats des produits seulement s'il y en a
+                if products:
+                    if 'stats' not in CATALOG:
+                        CATALOG['stats'] = {
+                            "total_views": 0,
+                            "category_views": {},
+                            "product_views": {},
+                            "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S"),
+                            "last_reset": datetime.now(paris_tz).strftime("%Y-%m-%d")
+                        }
 
-            if 'product_views' not in CATALOG['stats']:
-                CATALOG['stats']['product_views'] = {}
-            if category not in CATALOG['stats']['product_views']:
-                CATALOG['stats']['product_views'][category] = {}
-            if product['name'] not in CATALOG['stats']['product_views'][category]:
-                CATALOG['stats']['product_views'][category][product['name']] = 0
+                    if 'product_views' not in CATALOG['stats']:
+                        CATALOG['stats']['product_views'] = {}
+                    if category not in CATALOG['stats']['product_views']:
+                        CATALOG['stats']['product_views'][category] = {}
 
-            CATALOG['stats']['product_views'][category][product['name']] += 1
-            CATALOG['stats']['total_views'] += 1
-            CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
-            save_catalog(CATALOG)
+                    # Mettre à jour les stats pour chaque produit dans la catégorie
+                    for product in products:
+                        if product['name'] not in CATALOG['stats']['product_views'][category]:
+                            CATALOG['stats']['product_views'][category][product['name']] = 0
+                        CATALOG['stats']['product_views'][category][product['name']] += 1
+
+                    save_catalog(CATALOG)
 
     elif query.data.startswith(("next_media_", "prev_media_")):
         try:
@@ -1827,7 +1834,7 @@ async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.edit_message_text(
                 text=welcome_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
         else:
             # Sinon, on envoie un nouveau message
@@ -1835,7 +1842,7 @@ async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 text=welcome_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             context.user_data['menu_message_id'] = menu_message.message_id
 
@@ -1847,7 +1854,7 @@ async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 text=welcome_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             context.user_data['menu_message_id'] = menu_message.message_id
         except Exception as e:
