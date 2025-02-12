@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771904"
+TOKEN = "77190"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1112,32 +1112,40 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             ]
         ])
     try:
-        # D'abord envoyer/mettre à jour le message principal du jeu
         if game.game_status == 'finished':
-            # Envoyer d'abord le message final avec les scores (qui restera)
-            if chat_id in game_messages:
-                await context.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=game_messages[chat_id],
-                    text=game_text,
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            else:
-                message = await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=game_text,
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                game_messages[chat_id] = message.message_id
+            # Si c'est un callback_query, supprime le message avec les boutons
+            if update.callback_query:
+                try:
+                    await update.callback_query.message.delete()
+                except Exception:
+                    pass
+            # Si ce n'est pas un callback_query mais qu'on a l'ID du message dans game_messages
+            elif chat_id in game_messages:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=chat_id,
+                        message_id=game_messages[chat_id]
+                    )
+                except Exception:
+                    pass
 
-            # Nettoyer les références du jeu
+            # Envoie le message final avec les résultats
+            message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=game_text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            # Nettoie les références
             host_id = game.host_id
             if host_id in active_games:
                 del active_games[host_id]
             if host_id in waiting_games:
                 waiting_games.remove(host_id)
-            
-            # Envoyer le message "partie terminée" (qui sera supprimé au prochain /bj)
+            if chat_id in game_messages:
+                del game_messages[chat_id]
+
+            # Envoie le message "partie terminée"
             end_message = await context.bot.send_message(
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
@@ -1146,9 +1154,8 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 parse_mode=ParseMode.MARKDOWN
             )
             last_end_game_message[chat_id] = end_message.message_id
-
         else:
-            # Pour les parties en cours
+            # Le reste de votre code pour les parties en cours reste identique
             if update.callback_query:
                 await update.callback_query.message.edit_text(
                     text=game_text,
