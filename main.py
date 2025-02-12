@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "771904"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1695,8 +1695,10 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                             game.game_status = 'finished'
                             game.resolve_dealer()
                             game.determine_winners()
-
-                        await display_game(None, context, game)
+                        
+                        # Créer un faux update pour display_game
+                        dummy_update = Update(0, None)
+                        await display_game(dummy_update, context, game)
 
                 except Exception as e:
                     print(f"Erreur dans check_game_timeouts: {e}")
