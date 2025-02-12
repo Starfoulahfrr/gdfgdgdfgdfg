@@ -1695,10 +1695,8 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                             game.game_status = 'finished'
                             game.resolve_dealer()
                             game.determine_winners()
-                        
-                        # Créer un faux update pour display_game
-                        dummy_update = Update(0, None)
-                        await display_game(dummy_update, context, game)
+
+                        await display_game(None, context, game)
 
                 except Exception as e:
                     print(f"Erreur dans check_game_timeouts: {e}")
