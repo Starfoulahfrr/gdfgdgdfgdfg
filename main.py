@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "771904"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1112,50 +1112,65 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             ]
         ])
     try:
-        # D'abord mettre à jour ou envoyer le message du jeu
-        if update.callback_query:
-            await update.callback_query.message.edit_text(
-                text=game_text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        elif chat_id in game_messages:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=game_messages[chat_id],
-                text=game_text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        else:
-            message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=game_text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            game_messages[chat_id] = message.message_id
-
-        # Gérer la fin de partie seulement après avoir mis à jour le message principal
+        # D'abord envoyer/mettre à jour le message principal du jeu
         if game.game_status == 'finished':
-            # Nettoyer les références
+            # Envoyer d'abord le message final avec les scores (qui restera)
+            if chat_id in game_messages:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=game_messages[chat_id],
+                    text=game_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=game_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                game_messages[chat_id] = message.message_id
+
+            # Nettoyer les références du jeu
             host_id = game.host_id
             if host_id in active_games:
                 del active_games[host_id]
             if host_id in waiting_games:
                 waiting_games.remove(host_id)
-            if chat_id in game_messages:
-                del game_messages[chat_id]
             
-            # Envoyer uniquement le message de fin
+            # Envoyer le message "partie terminée" (qui sera supprimé au prochain /bj)
             end_message = await context.bot.send_message(
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
                 text="🎰 *La partie est terminée!*\n"
-                        "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
+                     "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
                 parse_mode=ParseMode.MARKDOWN
             )
             last_end_game_message[chat_id] = end_message.message_id
+
+        else:
+            # Pour les parties en cours
+            if update.callback_query:
+                await update.callback_query.message.edit_text(
+                    text=game_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            elif chat_id in game_messages:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=game_messages[chat_id],
+                    text=game_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=game_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                game_messages[chat_id] = message.message_id
 
     except Exception as e:
         print(f"Error in display_game: {e}")
