@@ -1412,61 +1412,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                             CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
                             save_catalog(CATALOG)
 
-    elif query.data.startswith("view_"):
-        try:
-            category = query.data.replace("view_", "")
-            if category in CATALOG:
-                # Initialisation des stats si nécessaire
-                if 'stats' not in CATALOG:
-                    CATALOG['stats'] = {
-                        "total_views": 0,
-                        "category_views": {},
-                        "product_views": {},
-                        "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
-                    }
-
-                if 'category_views' not in CATALOG['stats']:
-                    CATALOG['stats']['category_views'] = {}
-        
-                if category not in CATALOG['stats']['category_views']:
-                    CATALOG['stats']['category_views'][category] = 0
-        
-                # Mettre à jour les statistiques
-                CATALOG['stats']['category_views'][category] += 1
-                CATALOG['stats']['total_views'] += 1
-                CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
-                save_catalog(CATALOG)
-
-                products = CATALOG[category]
-                text = f"*{category}*\n\n"
-                keyboard = []
-                for product in products:
-                    # Limiter la taille du callback_data
-                    short_category = category[:10]
-                    short_product = product['name'][:20]
-                    keyboard.append([InlineKeyboardButton(
-                        product['name'],
-                        callback_data=f"product_{short_category}_{short_product}"
-                    )])
-
-                keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-
-                # Suppression du dernier message de produit (photo ou vidéo)
-                if 'last_product_message_id' in context.user_data:
-                    await context.bot.delete_message(
-                        chat_id=query.message.chat_id,
-                        message_id=context.user_data['last_product_message_id']
-                    )
-                    del context.user_data['last_product_message_id']
-            
-                await query.message.edit_text(
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-        except Exception as e:
-            print(f"Erreur lors de l'affichage des produits: {e}")
-            await query.answer("Une erreur est survenue", show_alert=True)
 
     elif query.data.startswith(("next_media_", "prev_media_")):
         try:
@@ -1746,6 +1691,62 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='HTML'  
             )
             return CHOOSING
+
+    elif query.data.startswith("view_"):
+        try:
+            category = query.data.replace("view_", "")
+            if category in CATALOG:
+                # Initialisation des stats si nécessaire
+                if 'stats' not in CATALOG:
+                    CATALOG['stats'] = {
+                        "total_views": 0,
+                        "category_views": {},
+                        "product_views": {},
+                        "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
+                    }
+
+                if 'category_views' not in CATALOG['stats']:
+                    CATALOG['stats']['category_views'] = {}
+        
+                if category not in CATALOG['stats']['category_views']:
+                    CATALOG['stats']['category_views'][category] = 0
+        
+                # Mettre à jour les statistiques
+                CATALOG['stats']['category_views'][category] += 1
+                CATALOG['stats']['total_views'] += 1
+                CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
+                save_catalog(CATALOG)
+
+                products = CATALOG[category]
+                text = f"*{category}*\n\n"
+                keyboard = []
+                for product in products:
+                    # Limiter la taille du callback_data
+                    short_category = category[:10]
+                    short_product = product['name'][:20]
+                    keyboard.append([InlineKeyboardButton(
+                        product['name'],
+                        callback_data=f"product_{short_category}_{short_product}"
+                    )])
+
+                keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
+
+                # Suppression du dernier message de produit (photo ou vidéo)
+                if 'last_product_message_id' in context.user_data:
+                    await context.bot.delete_message(
+                        chat_id=query.message.chat_id,
+                        message_id=context.user_data['last_product_message_id']
+                    )
+                    del context.user_data['last_product_message_id']
+            
+                await query.message.edit_text(
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            print(f"Erreur lors de l'affichage des produits: {e}")
+            await query.answer("Une erreur est survenue", show_alert=True)
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler temporaire pour obtenir le file_id de l'image banner"""
