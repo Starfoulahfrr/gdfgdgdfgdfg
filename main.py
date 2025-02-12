@@ -1461,56 +1461,41 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
 
                 try:
-                    # On vérifie si on vient d'un message avec photo/vidéo
-                    is_media_message = hasattr(query.message, 'photo') or hasattr(query.message, 'video')
-                
-                    if is_media_message:
-                        # Si on vient d'un message média, on le supprime et on crée un nouveau message
-                        await query.message.delete()
-                        message = await context.bot.send_message(
-                            chat_id=query.message.chat_id,
-                            text=text,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                        context.user_data['category_message_id'] = message.message_id
-                    else:
-                        # Sinon on essaie de modifier le message existant
-                        await query.message.edit_text(
-                            text=text,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                        context.user_data['category_message_id'] = query.message.message_id
-
-                    # Sauvegarder les informations du message
-                    context.user_data['category_message_text'] = text
-                    context.user_data['category_message_reply_markup'] = keyboard
-                
-                    # Supprimer la référence au dernier message de produit si elle existe
+                    # Suppression du dernier message de produit (photo ou vidéo) si existe
                     if 'last_product_message_id' in context.user_data:
                         try:
                             await context.bot.delete_message(
                                 chat_id=query.message.chat_id,
                                 message_id=context.user_data['last_product_message_id']
                             )
+                            del context.user_data['last_product_message_id']
                         except:
                             pass
-                        del context.user_data['last_product_message_id']
+
+                    print(f"Texte du message : {text}")
+                    print(f"Clavier : {keyboard}")
+
+                    # Éditer le message existant au lieu de le supprimer et recréer
+                    await query.message.edit_text(
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
                 
+                    context.user_data['category_message_id'] = query.message.message_id
+                    context.user_data['category_message_text'] = text
+                    context.user_data['category_message_reply_markup'] = keyboard
+
                 except Exception as e:
                     print(f"Erreur lors de la mise à jour du message des produits: {e}")
-                    try:
-                        # Fallback : créer un nouveau message
-                        message = await context.bot.send_message(
-                            chat_id=query.message.chat_id,
-                            text=text,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                        context.user_data['category_message_id'] = message.message_id
-                    except Exception as e:
-                        print(f"Erreur critique lors de la gestion du message: {e}")
+                    # Si l'édition échoue, on crée un nouveau message
+                    message = await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['category_message_id'] = message.message_id
 
                 # Mettre à jour les stats des produits seulement s'il y en a
                 if products:
