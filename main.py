@@ -48,6 +48,43 @@ except KeyError as e:
     exit(1)
 
 # Fonctions de gestion du catalogue
+
+
+def clean_and_truncate_text(text, max_length=50):
+    """
+    Nettoie et tronque un texte tout en préservant les emojis
+    Limite la longueur maximum et le nombre d'emojis
+    """
+    if not text:
+        return text
+        
+    # Limiter le nombre d'emojis (garder les 5 premiers)
+    emoji_pattern = re.compile("["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symboles & pictogrammes
+        u"\U0001F680-\U0001F6FF"  # transport & symboles
+        u"\U0001F1E0-\U0001F1FF"  # drapeaux
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        "]+", flags=re.UNICODE)
+    
+    emojis = emoji_pattern.findall(text)
+    text_without_emojis = emoji_pattern.sub('', text)
+    
+    # Garder seulement les 5 premiers emojis
+    emojis = emojis[:5]
+    
+    # Tronquer le texte sans emojis
+    if len(text_without_emojis) > max_length:
+        text_without_emojis = text_without_emojis[:max_length] + "..."
+        
+    # Reconstruire le texte avec les emojis limités
+    final_text = text_without_emojis
+    for emoji in emojis:
+        final_text = emoji + " " + final_text
+        
+    return final_text.strip()
+
 def load_catalog():
     try:
         with open(CONFIG['catalog_file'], 'r', encoding='utf-8') as f:
@@ -468,7 +505,7 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_category_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout d'une nouvelle catégorie"""
-    category_name = update.message.text
+    category_name = clean_and_truncate_text(update.message.text, max_length=30)
     
     if category_name in CATALOG:
         await update.message.reply_text(
@@ -493,9 +530,10 @@ async def handle_category_name(update: Update, context: ContextTypes.DEFAULT_TYP
     
     return await show_admin_menu(update, context)
 
+
 async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'entrée du nom du produit"""
-    product_name = update.message.text
+    product_name = clean_and_truncate_text(update.message.text, max_length=40)
     category = context.user_data.get('temp_product_category')
     
     if category and any(p.get('name') == product_name for p in CATALOG.get(category, [])):
