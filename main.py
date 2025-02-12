@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "77190"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -80,6 +80,21 @@ class MultiPlayerGame:
                 time_difference = (current_time - self.last_action_time).total_seconds()
                 return time_difference > 30
             return False
+
+    def can_split(self, player_id):
+        player_data = self.players[player_id]
+        # Vérifie si le joueur a exactement deux cartes de même rang
+        return len(player_data['hand']) == 2 and player_data['hand'][0].rank == player_data['hand'][1].rank
+
+    def split_hand(self, player_id):
+        player_data = self.players[player_id]
+        if self.can_split(player_id):
+            new_hand = [player_data['hand'].pop()]
+            player_data['hand'] = [player_data['hand'][0], self.deck.deal()]
+            player_data['second_hand'] = [new_hand[0], self.deck.deal()]
+            player_data['status'] = 'playing'
+            return True
+        return False
 
     def get_host_name(self) -> str:
         """Retourne le nom de l'hôte de la partie"""
@@ -1027,54 +1042,57 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
     
     game_text += (
         f"👨‍💼 *DEALER* │ {dealer_cards}\n"
-        f"├ Total: [{dealer_total}]\n"
+        f"├ Total: {dealer_total}\n"
         "──────────────\n\n"
     )
     
     # Joueurs
     for player_id, player_data in game.players.items():
         user = await context.bot.get_chat(player_id)
-        hand = player_data['hand']
-        total = game.calculate_hand(hand)
-        status = player_data['status']
-        cards = ' '.join(str(card) for card in hand)
+        hands = [player_data['hand']]
+        if 'second_hand' in player_data:
+            hands.append(player_data['second_hand'])
         
-        # Status et résultats
-        status_icon = "🎮"  # Défaut
-        result_text = ""
+        for hand in hands:
+            total = game.calculate_hand(hand)
+            status = player_data['status']
+            cards = ' '.join(str(card) for card in hand)
+            
+            # Status et résultats
+            status_icon = "🎮"  # Défaut
+            result_text = ""
 
-        if game.game_status == 'finished':
-            if status == 'blackjack':
-                winnings = int(player_data['bet'] * 2.5)
-                status_icon = "🏆"
-                result_text = f"+{winnings}"
-            elif status == 'win':
-                winnings = player_data['bet'] * 2
-                status_icon = "💰"
-                result_text = f"+{winnings}"
-            elif status == 'lose':
-                status_icon = "💀"
-                result_text = f"-{player_data['bet']}"
-            elif status == 'push':
-                status_icon = "🤝"
-                result_text = "±0"
+            if game.game_status == 'finished':
+                if status == 'blackjack':
+                    winnings = int(player_data['bet'] * 2.5)
+                    status_icon = "🏆"
+                    result_text = f"+{winnings}"
+                elif status == 'win':
+                    winnings = player_data['bet'] * 2
+                    status_icon = "💰"
+                    result_text = f"+{winnings}"
+                elif status == 'lose':
+                    status_icon = "💀"
+                    result_text = f"-{player_data['bet']}"
+                elif status == 'push':
+                    status_icon = "🤝"
+                    result_text = "±0"
+                elif status == 'bust':
+                    status_icon = "💥"
+                    result_text = f"-{player_data['bet']}"
+            elif status == 'stand':
+                status_icon = "⏸"
             elif status == 'bust':
                 status_icon = "💥"
-                result_text = f"-{player_data['bet']}"
-        elif status == 'stand':
-            status_icon = "⏸"
-        elif status == 'bust':
-            status_icon = "💥"
-        
-        # Affichage du joueur
-        game_text += (
-            f"{status_icon} *{user.first_name}* │ {cards}\n"
-            f"├ Total: [{total}]\n"
-            f"├ Mise: {player_data['bet']} 💵"
-        )
-        if result_text:
-            game_text += f" │ {result_text}"
-        game_text += "\n──────────────\n\n"
+
+            game_text += (
+                f"{status_icon} *{user.first_name}* │ {cards}\n"
+                f"├ Total: {total}\n"
+                f"├ Mise: {player_data['bet']} 💵"
+            )
+            if result_text:
+                game_text += f" │ {result_text}"
+            game_text += "\n──────────────\n\n"
 
     # Status actuel
     if game.game_status == 'finished':
@@ -1104,13 +1122,21 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
 
     # Boutons de jeu
     keyboard = None
-    if game.game_status == 'playing' and game.get_current_player_id():
-        keyboard = InlineKeyboardMarkup([
+    if game.game_status == 'playing' and (current_player_id := game.get_current_player_id()):
+        buttons = [
             [
                 InlineKeyboardButton("🎯 CARTE", callback_data="hit"),
                 InlineKeyboardButton("⏹ STOP", callback_data="stand")
             ]
-        ])
+        ]
+        
+        # Ajouter le bouton SPLIT uniquement si c'est possible
+        if game.can_split(current_player_id):
+            buttons.append([
+                InlineKeyboardButton("✂️ SPLIT", callback_data="split")
+            ])
+        
+        keyboard = InlineKeyboardMarkup(buttons)
     try:
         if game.game_status == 'finished':
             # Si c'est un callback_query, supprime le message avec les boutons
@@ -1265,15 +1291,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         if query.data == "hit":
+            if 'current_hand' not in player_data:
+                player_data['current_hand'] = 'hand'
+            current_hand = player_data['current_hand']
             new_card = game.deck.deal()
-            player_data['hand'].append(new_card)
-            total = game.calculate_hand(player_data['hand'])
+            player_data[current_hand].append(new_card)
+            total = game.calculate_hand(player_data[current_hand])
     
             if total > 21:
                 player_data['status'] = 'bust'
                 game_ended = game.next_player()
                 await query.answer("💥 Vous avez dépassé 21!")
-            elif total == 21:  # Ajoutez cette condition
+            elif total == 21:
                 player_data['status'] = 'blackjack'
                 game_ended = game.next_player()
                 await query.answer("🌟 Blackjack!")
@@ -1281,9 +1310,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer(f"🎯 Total: {total}")
         
         elif query.data == "stand":
-            player_data['status'] = 'stand'
-            game_ended = game.next_player()
-            await query.answer("⏹ Vous restez")
+            if 'current_hand' not in player_data:
+                player_data['current_hand'] = 'hand'
+            current_hand = player_data['current_hand']
+            if current_hand == 'hand' and 'second_hand' in player_data:
+                player_data['current_hand'] = 'second_hand'
+                player_data['status'] = 'playing'
+                await query.answer("⏹ Vous restez sur la première main, à la seconde")
+            else:
+                player_data['status'] = 'stand'
+                game_ended = game.next_player()
+                await query.answer("⏹ Vous restez")
+        
+        elif query.data == "split":
+            if game.split_hand(user.id):
+                player_data['current_hand'] = 'hand'
+                await query.answer("✂️ Vous avez splitté votre main!")
+            else:
+                await query.answer("❌ Impossible de splitter la main!")
         
         # Mise à jour de l'affichage
         await display_game(update, context, game)
@@ -1301,12 +1345,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 waiting_games.remove(host_id)
             if chat_id in game_messages:
                 del game_messages[chat_id]
-            
-            # Nettoyer chaque joueur des parties actives
-            for player_id in players_in_game:
-                for game_id in list(active_games.keys()):  # Utiliser une copie de la liste des clés
-                    if player_id in active_games[game_id].players:
-                        del active_games[game_id]
             
             # Nettoyer chaque joueur des parties actives
             for player_id in players_in_game:
