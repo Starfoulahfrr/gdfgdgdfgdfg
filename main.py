@@ -900,18 +900,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif query.data == "add_product":
         keyboard = []
-        for idx, category in enumerate(CATALOG.keys()):
+        for category in CATALOG.keys():
             if category != 'stats':
-                # Utiliser juste l'index comme identifiant
-                keyboard.append([InlineKeyboardButton(
-                    category,  # Garde le nom complet pour l'affichage
-                    callback_data=f"select_category_{idx}"  # Utilise l'index comme identifiant
-                )])
-    
-        # Sauvegarder la liste des catégories dans le contexte
-        context.user_data['temp_categories'] = [cat for cat in CATALOG.keys() if cat != 'stats']
+                keyboard.append([InlineKeyboardButton(category, callback_data=f"select_category_{category}")])
         keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")])
-    
+        
         await query.message.edit_text(
             "📝 Sélectionnez la catégorie pour le nouveau produit:",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -919,13 +912,11 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return SELECTING_CATEGORY
 
     elif query.data.startswith("select_category_"):
-        try:
-            # Récupère l'index de la catégorie
-            idx = int(query.data.replace("select_category_", ""))
-            # Récupère la vraie catégorie depuis la liste temporaire
-            category = context.user_data['temp_categories'][idx]
-        
+        # Ne traiter que si ce n'est PAS une action de suppression
+        if not query.data.startswith("select_category_to_delete_"):
+            category = query.data.replace("select_category_", "")
             context.user_data['temp_product_category'] = category
+            
             await query.message.edit_text(
                 "📝 Veuillez entrer le nom du nouveau produit:",
                 reply_markup=InlineKeyboardMarkup([[
@@ -933,9 +924,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 ]])
             )
             return WAITING_PRODUCT_NAME
-        except (ValueError, IndexError, KeyError):
-            await query.answer("Erreur: Catégorie non trouvée", show_alert=True)
-            return await show_admin_menu(update, context)
 
     elif query.data.startswith("delete_product_category_"):
         category = query.data.replace("delete_product_category_", "")
@@ -1327,27 +1315,17 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             return await show_admin_menu(update, context)
 
     elif query.data.startswith("product_"):
-        try:
-            parts = query.data.split("_")
-            if len(parts) >= 3:
-                category_short = parts[1]
-                product_idx = int(parts[2])
-            
-                # Trouver la vraie catégorie
-                category = next((cat for cat in CATALOG.keys() 
-                               if cat.startswith(category_short)), None)
-            
-                if category and category in CATALOG:
-                    product_name = context.user_data.get(f'product_{product_idx}')
-                    product = next((p for p in CATALOG[category] 
-                                  if p['name'] == product_name), None)
+                _, category, product_name = query.data.split("_", 2)
                 
+                # Trouver la vraie catégorie et le vrai produit
+                real_category = next((cat for cat in CATALOG.keys() if cat.startswith(category) or category.startswith(cat)), None)
+                if real_category:
+                    product = next((p for p in CATALOG[real_category] if p['name'].startswith(product_name) or product_name.startswith(p['name'])), None)
                     if product:
+                        category = real_category  # Utiliser la vraie catégorie pour la suite
                         caption = f"📱 <b>{product['name']}</b>\n\n"
                         caption += f"💰 <b>Prix:</b>\n{product['price']}\n\n"
                         caption += f"📝 <b>Description:</b>\n{product['description']}"
-                    
-                        # Le reste de votre code pour l'affichage du produit reste identique
 
                         keyboard = [[
                             InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}"),
@@ -1411,6 +1389,185 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                             CATALOG['stats']['total_views'] += 1
                             CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
                             save_catalog(CATALOG)
+
+    elif query.data.startswith("view_"):
+        category = query.data.replace("view_", "")
+        if category in CATALOG:
+            # Initialisation des stats si nécessaire
+            if 'stats' not in CATALOG:
+                CATALOG['stats'] = {
+                    "total_views": 0,
+                    "category_views": {},
+                    "product_views": {},
+                    "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
+                }
+
+            if 'category_views' not in CATALOG['stats']:
+                CATALOG['stats']['category_views'] = {}
+    
+            if category not in CATALOG['stats']['category_views']:
+                CATALOG['stats']['category_views'][category] = 0
+    
+            # Mettre à jour les statistiques
+            CATALOG['stats']['category_views'][category] += 1
+            CATALOG['stats']['total_views'] += 1
+            CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
+            save_catalog(CATALOG)
+
+            products = CATALOG[category]
+            # Afficher la liste des produits
+            text = f"*{category}*\n\n"
+            keyboard = []
+            for product in products:
+                keyboard.append([InlineKeyboardButton(
+                    product['name'],
+                    callback_data=f"product_{category[:10]}_{product['name'][:20]}"
+                )])
+
+            keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
+
+            try:
+                # Suppression du dernier message de produit (photo ou vidéo)
+                if 'last_product_message_id' in context.user_data:
+                    await context.bot.delete_message(
+                        chat_id=query.message.chat_id,
+                        message_id=context.user_data['last_product_message_id']
+                    )
+                    del context.user_data['last_product_message_id']
+            
+                await context.bot.delete_message(
+                    chat_id=query.message.chat_id,
+                    message_id=query.message.message_id
+                )
+                print(f"Texte du message : {text}")
+                print(f"Clavier : {keyboard}")
+                message = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                context.user_data['category_message_id'] = message.message_id
+                context.user_data['category_message_text'] = text
+                context.user_data['category_message_reply_markup'] = keyboard
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour du message des produits: {e}")
+                # Si la mise à jour échoue, recréez le message
+                message = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                context.user_data['category_message_id'] = message.message_id
+
+            # Mettre à jour les stats
+            if 'stats' not in CATALOG:
+                CATALOG['stats'] = {
+                    "total_views": 0,
+                    "category_views": {},
+                    "product_views": {},
+                    "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S"),
+                    "last_reset": datetime.now(paris_tz).strftime("%Y-%m-%d")
+                }
+
+            if 'product_views' not in CATALOG['stats']:
+                CATALOG['stats']['product_views'] = {}
+            if category not in CATALOG['stats']['product_views']:
+                CATALOG['stats']['product_views'][category] = {}
+            if product['name'] not in CATALOG['stats']['product_views'][category]:
+                CATALOG['stats']['product_views'][category][product['name']] = 0
+
+            CATALOG['stats']['product_views'][category][product['name']] += 1
+            CATALOG['stats']['total_views'] += 1
+            CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
+            save_catalog(CATALOG)
+
+    elif query.data.startswith(("next_media_", "prev_media_")):
+        try:
+            _, direction, category, product_name = query.data.split("_", 3)
+            product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
+
+            if product and 'media' in product:
+                media_list = sorted(product['media'], key=lambda x: x.get('order_index', 0))
+                total_media = len(media_list)
+                current_index = context.user_data.get('current_media_index', 0)
+
+                # Navigation simple
+                if direction == "next":
+                    current_index = current_index + 1
+                    if current_index >= total_media:
+                        current_index = 0
+                else:  # prev
+                    current_index = current_index - 1
+                    if current_index < 0:
+                        current_index = total_media - 1
+
+                context.user_data['current_media_index'] = current_index
+                current_media = media_list[current_index]
+
+                caption = f"📱 *{product['name']}*\n\n"
+                caption += f"💰 *Prix:*\n{product['price']}\n\n"
+                caption += f"📝 *Description:*\n{product['description']}"
+
+                keyboard = []
+                if total_media > 1:
+                    keyboard.append([
+                        InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{category}_{product_name}"),
+                        InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{category}_{product_name}")
+                    ])
+                keyboard.append([
+                    InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}"),
+                    InlineKeyboardButton(
+                        "🛒 Commander",
+                        **({"url": CONFIG.get('order_url')} if CONFIG.get('order_url') else {"callback_data": "show_order_text"})
+                    )
+                ])
+
+                try:
+                    await query.message.delete()
+                except Exception as e:
+                    print(f"Erreur lors de la suppression du message: {e}")
+
+                if current_media['media_type'] == 'photo':
+                    message = await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=current_media['media_id'],
+                        caption=caption,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                else:  # video
+                    message = await context.bot.send_video(
+                        chat_id=query.message.chat_id,
+                        video=current_media['media_id'],
+                        caption=caption,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                context.user_data['last_product_message_id'] = message.message_id
+
+        except Exception as e:
+            print(f"Erreur lors de la navigation des médias: {e}")
+            await query.answer("Une erreur est survenue")
+
+    elif query.data == "edit_product":
+        keyboard = []
+        for category in CATALOG.keys():
+            if category != 'stats':
+                keyboard.append([
+                    InlineKeyboardButton(
+                        category, 
+                        callback_data=f"editcat_{category}"  # Raccourci ici
+                    )
+                ])
+        keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")])
+        
+        await query.message.edit_text(
+            "✏️ Sélectionnez la catégorie du produit à modifier:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return SELECTING_CATEGORY
 
     elif query.data.startswith("editcat_"):  # Nouveau gestionnaire avec nom plus court
         category = query.data.replace("editcat_", "")
@@ -1532,18 +1689,12 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                
     elif query.data == "show_categories":
         keyboard = []
-        # Créer un mapping des catégories
-        category_map = {}
-        for idx, category in enumerate(CATALOG.keys()):
+        # Créer uniquement les boutons de catégories
+        for category in CATALOG.keys():
             if category != 'stats':
-                category_map[str(idx)] = category
-                keyboard.append([InlineKeyboardButton(
-                    category,  # Affiche le nom complet avec emojis
-                    callback_data=f"view_{idx}"  # Utilise juste l'index
-                )])
-    
-        # Sauvegarder le mapping pour une utilisation ultérieure
-        context.user_data['category_map'] = category_map
+                keyboard.append([InlineKeyboardButton(category, callback_data=f"view_{category}")])
+
+        # Ajouter uniquement le bouton retour à l'accueil
         keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
 
         try:
@@ -1556,6 +1707,15 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data['menu_message_id'] = message.message_id
         except Exception as e:
             print(f"Erreur lors de la mise à jour du message des catégories: {e}")
+            # Si la mise à jour échoue, recréez le message
+            message = await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="📋 *Menu*\n\n"
+                     "Choisissez une catégorie pour voir les produits :",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            context.user_data['menu_message_id'] = message.message_id
 
     elif query.data == "back_to_home":  # Ajout de cette condition ici
             chat_id = update.effective_chat.id
@@ -1604,148 +1764,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='HTML'  
             )
             return CHOOSING
-
-    elif query.data.startswith("view_"):
-        try:
-            category = query.data.replace("view_", "")
-            if category in CATALOG:
-                # Initialisation des stats si nécessaire
-                if 'stats' not in CATALOG:
-                    CATALOG['stats'] = {
-                        "total_views": 0,
-                        "category_views": {},
-                        "product_views": {},
-                        "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
-                    }
-
-                if 'category_views' not in CATALOG['stats']:
-                    CATALOG['stats']['category_views'] = {}
-        
-                if category not in CATALOG['stats']['category_views']:
-                    CATALOG['stats']['category_views'][category] = 0
-        
-                # Mettre à jour les statistiques
-                CATALOG['stats']['category_views'][category] += 1
-                CATALOG['stats']['total_views'] += 1
-                CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
-                save_catalog(CATALOG)
-
-                products = CATALOG[category]
-                text = f"*{category}*\n\n"
-                keyboard = []
-                for product in products:
-                    # Limiter la taille du callback_data
-                    short_category = category[:10]
-                    short_product = product['name'][:20]
-                    keyboard.append([InlineKeyboardButton(
-                        product['name'],
-                        callback_data=f"product_{short_category}_{short_product}"
-                    )])
-
-                keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
-
-                # Suppression du dernier message de produit (photo ou vidéo)
-                if 'last_product_message_id' in context.user_data:
-                    await context.bot.delete_message(
-                        chat_id=query.message.chat_id,
-                        message_id=context.user_data['last_product_message_id']
-                    )
-                    del context.user_data['last_product_message_id']
-            
-                await query.message.edit_text(
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-        except Exception as e:
-            print(f"Erreur lors de l'affichage des produits: {e}")
-            await query.answer("Une erreur est survenue", show_alert=True)
-
-    elif query.data.startswith(("next_media_", "prev_media_")):
-        try:
-            _, direction, category, product_name = query.data.split("_", 3)
-            product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
-
-            if product and 'media' in product:
-                media_list = sorted(product['media'], key=lambda x: x.get('order_index', 0))
-                total_media = len(media_list)
-                current_index = context.user_data.get('current_media_index', 0)
-
-                # Navigation simple
-                if direction == "next":
-                    current_index = current_index + 1
-                    if current_index >= total_media:
-                        current_index = 0
-                else:  # prev
-                    current_index = current_index - 1
-                    if current_index < 0:
-                        current_index = total_media - 1
-
-                context.user_data['current_media_index'] = current_index
-                current_media = media_list[current_index]
-
-                caption = f"📱 *{product['name']}*\n\n"
-                caption += f"💰 *Prix:*\n{product['price']}\n\n"
-                caption += f"📝 *Description:*\n{product['description']}"
-
-                keyboard = []
-                if total_media > 1:
-                    keyboard.append([
-                        InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{category}_{product_name}"),
-                        InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{category}_{product_name}")
-                    ])
-                keyboard.append([
-                    InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}"),
-                    InlineKeyboardButton(
-                        "🛒 Commander",
-                        **({"url": CONFIG.get('order_url')} if CONFIG.get('order_url') else {"callback_data": "show_order_text"})
-                    )
-                ])
-
-                try:
-                    await query.message.delete()
-                except Exception as e:
-                    print(f"Erreur lors de la suppression du message: {e}")
-
-                if current_media['media_type'] == 'photo':
-                    message = await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
-                        photo=current_media['media_id'],
-                        caption=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                else:  # video
-                    message = await context.bot.send_video(
-                        chat_id=query.message.chat_id,
-                        video=current_media['media_id'],
-                        caption=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                context.user_data['last_product_message_id'] = message.message_id
-
-        except Exception as e:
-            print(f"Erreur lors de la navigation des médias: {e}")
-            await query.answer("Une erreur est survenue")
-
-    elif query.data == "edit_product":
-        keyboard = []
-        for category in CATALOG.keys():
-            if category != 'stats':
-                keyboard.append([
-                    InlineKeyboardButton(
-                        category, 
-                        callback_data=f"editcat_{category}"  # Raccourci ici
-                    )
-                ])
-        keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_edit")])
-        
-        await query.message.edit_text(
-            "✏️ Sélectionnez la catégorie du produit à modifier:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return SELECTING_CATEGORY
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler temporaire pour obtenir le file_id de l'image banner"""
