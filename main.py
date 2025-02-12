@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771904"
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1685,6 +1685,16 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
             current_player_id = game.get_current_player_id()
             if current_player_id and game.check_timeout():
                 try:
+                    # Supprimer l'ancien message avec les boutons avant de faire l'autostand
+                    if hasattr(game, 'initial_chat_id') and game.initial_chat_id in game_messages:
+                        try:
+                            await context.bot.delete_message(
+                                chat_id=game.initial_chat_id,
+                                message_id=game_messages[game.initial_chat_id]
+                            )
+                        except Exception:
+                            pass
+
                     player_data = game.players[current_player_id]
                     if player_data['status'] == 'playing':
                         player_data['status'] = 'stand'
