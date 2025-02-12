@@ -468,11 +468,42 @@ async def handle_banner_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_category_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère l'ajout d'une nouvelle catégorie"""
-    category_name = update.message.text
+    category_name = update.message.text.strip()
     
-    if category_name in CATALOG:
+    # Fonction pour compter les emojis
+    def count_emojis(text):
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            "]+", flags=re.UNICODE)
+        return len(emoji_pattern.findall(text))
+    
+    # Limites
+    MAX_LENGTH = 32  # Longueur maximale du nom de catégorie
+    MAX_EMOJIS = 3   # Nombre maximum d'emojis
+    MAX_WORDS = 5    # Nombre maximum de mots
+    
+    # Vérifications
+    word_count = len(category_name.split())
+    emoji_count = count_emojis(category_name)
+    
+    error_message = None
+    if len(category_name) > MAX_LENGTH:
+        error_message = f"❌ Le nom de la catégorie ne doit pas dépasser {MAX_LENGTH} caractères."
+    elif word_count > MAX_WORDS:
+        error_message = f"❌ Le nom de la catégorie ne doit pas dépasser {MAX_WORDS} mots."
+    elif emoji_count > MAX_EMOJIS:
+        error_message = f"❌ Le nom de la catégorie ne doit pas contenir plus de {MAX_EMOJIS} emojis."
+    elif category_name in CATALOG:
+        error_message = "❌ Cette catégorie existe déjà."
+    
+    if error_message:
         await update.message.reply_text(
-            "❌ Cette catégorie existe déjà. Veuillez choisir un autre nom:",
+            error_message + "\nVeuillez choisir un autre nom:",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_category")
             ]])
