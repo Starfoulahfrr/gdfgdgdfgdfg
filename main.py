@@ -15,6 +15,7 @@ game_messages = {}
 CLASSEMENT_MESSAGE_ID = None
 CLASSEMENT_CHAT_ID = None
 last_game_message = {}  # {chat_id: message_id}
+last_end_game_message = {}  # {chat_id: message_id}
 
 # Configuration du logging
 logging.basicConfig(
@@ -24,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771"
+TOKEN = "77190"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -772,6 +773,12 @@ async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message or update.edited_message
     chat_id = message.chat_id
     
+    if chat_id in last_end_game_message:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=last_end_game_message[chat_id])
+            del last_end_game_message[chat_id]
+        except Exception:
+            pass
     try:
         bet_amount = int(context.args[0])
     except (IndexError, ValueError):
@@ -978,6 +985,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         update.callback_query.message.message_thread_id if update.callback_query
         else (update.message.message_thread_id if update.message else None)
     )
+    
     # Vérifier et gérer les blackjacks initiaux si nécessaire
     if game.game_status == 'playing':
         all_blackjack = True
@@ -1025,7 +1033,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         if game.game_status == 'finished':
             if status == 'blackjack':
                 winnings = int(player_data['bet'] * 2.5)
-                status_icon = "🏆"  # Changé ici pour le trophée
+                status_icon = "🏆"
                 result_text = f"+{winnings}"
             elif status == 'win':
                 winnings = player_data['bet'] * 2
@@ -1092,6 +1100,62 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         ])
 
     try:
+        if game.game_status == 'finished':
+            host_id = game.host_id
+            players_in_game = list(game.players.keys())
+            
+            # Mettre à jour le message existant au lieu d'en envoyer un nouveau
+            if chat_id in game_messages:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=game_messages[chat_id],
+                    text=game_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                # Si pour une raison quelconque nous n'avons pas l'ID du message
+                message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=game_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                game_messages[chat_id] = message.message_id
+
+            # Envoyer le message de fin
+            end_message = await context.bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="🎰 *La partie est terminée!*\n"
+                     "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            last_end_game_message[chat_id] = end_message.message_id
+            
+            # Nettoyer les références
+            if host_id in active_games:
+                del active_games[host_id]
+            if host_id in waiting_games:
+                waiting_games.remove(host_id)
+            
+            # Nettoyer les parties des joueurs
+            games_to_clean = []
+            for game_id, game_obj in active_games.items():
+                for player_id in players_in_game:
+                    if player_id in game_obj.players:
+                        games_to_clean.append(game_id)
+                        break
+            
+            for game_id in games_to_clean:
+                if game_id in active_games:
+                    del active_games[game_id]
+
+            # Supprimer l'ID du message seulement après avoir tout nettoyé
+            if chat_id in game_messages:
+                del game_messages[chat_id]
+                    
+            return
+        
+        # Pour les parties en cours (non terminées)
         if update.callback_query:
             await update.callback_query.message.edit_text(
                 text=game_text,
@@ -1114,26 +1178,6 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 parse_mode=ParseMode.MARKDOWN
             )
             game_messages[chat_id] = message.message_id
-
-        # Ajout du message de fin après l'affichage principal
-        if game.game_status == 'finished':
-            # Nettoyer les références
-            host_id = game.host_id
-            if host_id in active_games:
-                del active_games[host_id]
-            if host_id in waiting_games:
-                waiting_games.remove(host_id)
-            if chat_id in game_messages:
-                del game_messages[chat_id]
-            
-            # Envoyer le message de fin
-            await context.bot.send_message(
-                chat_id=chat_id,
-                message_thread_id=message_thread_id,  # Ajout de cette ligne
-                text="🎰 *La partie est terminée!*\n"
-                     "Vous pouvez maintenant en démarrer une nouvelle avec `/bj [mise]`",
-                parse_mode=ParseMode.MARKDOWN
-            )
 
     except Exception as e:
         print(f"Error in display_game: {e}")
@@ -1635,7 +1679,8 @@ def get_status_emoji(status: str) -> str:
     return f"{emojis.get(status, '❓')} {status.upper()}"
 
 async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
-    for game in active_games.values():
+    games_to_check = list(active_games.items())  # Créer une copie
+    for game_id, game in games_to_check:
         if game.game_status == 'playing':
             current_player_id = game.get_current_player_id()
             if current_player_id and game.check_timeout():
