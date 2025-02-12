@@ -1497,10 +1497,12 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                             CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
                             save_catalog(CATALOG)
 
-    elif query.data.startswith("view_"):
+    elif query.data.startswith("v_"):  # Nouveau gestionnaire pour voir les catégories
         try:
-            category = query.data.replace("view_", "")
-            if category in CATALOG:
+            idx = query.data.replace("v_", "")
+            category = context.user_data['categories_mapping'].get(idx)
+        
+            if category and category in CATALOG:
                 # Initialisation des stats...
                 if 'stats' not in CATALOG:
                     CATALOG['stats'] = {
@@ -1510,13 +1512,13 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                         "last_updated": datetime.now(paris_tz).strftime("%H:%M:%S")
                     }
 
-                # Mise à jour des stats...
                 if 'category_views' not in CATALOG['stats']:
                     CATALOG['stats']['category_views'] = {}
-    
+
                 if category not in CATALOG['stats']['category_views']:
                     CATALOG['stats']['category_views'][category] = 0
-    
+
+                # Mise à jour des stats
                 CATALOG['stats']['category_views'][category] += 1
                 CATALOG['stats']['total_views'] += 1
                 CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
@@ -1524,18 +1526,16 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
 
                 products = CATALOG[category]
                 text = f"*{category}*\n\n"
-                keyboard = []
             
-                # Stocker le mapping des produits avec des IDs simples
+                keyboard = []
                 context.user_data['current_category'] = category
                 context.user_data['products_mapping'] = {}
             
-                for idx, product in enumerate(products):
-                    simple_id = str(idx)
-                    context.user_data['products_mapping'][simple_id] = product['name']
+                for prod_idx, product in enumerate(products):
+                    context.user_data['products_mapping'][str(prod_idx)] = product['name']
                     keyboard.append([InlineKeyboardButton(
                         product['name'],
-                        callback_data=f"p_{simple_id}"  # Utiliser un callback_data très court
+                        callback_data=f"p_{prod_idx}"  # Callback court pour produit
                     )])
 
                 keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
@@ -1557,7 +1557,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 )
 
         except Exception as e:
-            print(f"Erreur dans view_: {e}")
+            print(f"Erreur dans v_: {e}")
             await query.answer("Une erreur est survenue", show_alert=True)
 
     elif query.data.startswith(("next_media_", "prev_media_")):
@@ -1766,27 +1766,24 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                
     elif query.data == "show_categories":
         keyboard = []
-        # Stocker le mapping des catégories
-        context.user_data['categories_map'] = {}
-    
+        # Créer un mapping temporaire pour les catégories
+        context.user_data['categories_mapping'] = {}
+
         for idx, category in enumerate([cat for cat in CATALOG.keys() if cat != 'stats']):
-            context.user_data['categories_map'][str(idx)] = category
+            context.user_data['categories_mapping'][str(idx)] = category
             keyboard.append([InlineKeyboardButton(
                 category,
-                callback_data=f"view_{idx}"
+                callback_data=f"v_{idx}"  # Callback court pour view
             )])
 
         keyboard.append([InlineKeyboardButton("🔙 Retour à l'accueil", callback_data="back_to_home")])
 
-        try:
-            await query.message.edit_text(
-                "📋 *Menu*\n\n"
-                "Choisissez une catégorie pour voir les produits :",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            print(f"Erreur lors de l'affichage des catégories: {e}")
+        await query.message.edit_text(
+            "📋 *Menu*\n\n"
+            "Choisissez une catégorie pour voir les produits :",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
 
     elif query.data == "back_to_home":  # Ajout de cette condition ici
             chat_id = update.effective_chat.id
