@@ -51,13 +51,113 @@ except KeyError as e:
 def load_catalog():
     try:
         with open(CONFIG['catalog_file'], 'r', encoding='utf-8') as f:
-            return json.load(f)
+            catalog = json.load(f)
+            # Nettoyer les noms de catégories et de produits
+            cleaned_catalog = {}
+            for category, products in catalog.items():
+                cleaned_category = clean_text(category)
+                cleaned_products = []
+                if isinstance(products, list):
+                    for product in products:
+                        if isinstance(product, dict):
+                            cleaned_product = {
+                                'name': clean_text(product.get('name', '')),
+                                'price': clean_text(product.get('price', '')),
+                                'description': clean_text(product.get('description', '')),
+                                'media': product.get('media', [])
+                            }
+                            cleaned_products.append(cleaned_product)
+                cleaned_catalog[cleaned_category] = cleaned_products
+            return cleaned_catalog
     except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        logger.error(f"Erreur lors du décodage du fichier JSON: {e}")
         return {}
 
 def save_catalog(catalog):
-    with open(CONFIG['catalog_file'], 'w', encoding='utf-8') as f:
-        json.dump(catalog, f, indent=4, ensure_ascii=False)
+    try:
+        with open(CONFIG['catalog_file'], 'w', encoding='utf-8') as f:
+            json.dump(catalog, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'enregistrement du catalogue: {e}")
+
+def clean_stats():
+    """Nettoie les statistiques des produits et catégories qui n'existent plus"""
+    try:
+        if 'stats' not in CATALOG:
+            return
+        
+        stats = CATALOG['stats']
+        
+        # Nettoyer les vues par catégorie
+        if 'category_views' in stats:
+            categories_to_remove = []
+            for category in stats['category_views']:
+                if category not in CATALOG or category == 'stats':
+                    categories_to_remove.append(category)
+            
+            for category in categories_to_remove:
+                del stats['category_views'][category]
+                print(f"🧹 Suppression des stats de la catégorie: {category}")
+
+        # Nettoyer les vues par produit
+        if 'product_views' in stats:
+            categories_to_remove = []
+            for category in stats['product_views']:
+                if category not in CATALOG or category == 'stats':
+                    categories_to_remove.append(category)
+                    continue
+                
+                products_to_remove = []
+                existing_products = [p['name'] for p in CATALOG[category]]
+                
+                for product_name in stats['product_views'][category]:
+                    if product_name not in existing_products:
+                        products_to_remove.append(product_name)
+                
+                # Supprimer les produits qui n'existent plus
+                for product in products_to_remove:
+                    del stats['product_views'][category][product]
+                    print(f"🧹 Suppression des stats du produit: {product} dans {category}")
+                
+                # Si la catégorie est vide après nettoyage, la marquer pour suppression
+                if not stats['product_views'][category]:
+                    categories_to_remove.append(category)
+            
+            # Supprimer les catégories vides
+            for category in categories_to_remove:
+                if category in stats['product_views']:
+                    del stats['product_views'][category]
+
+        # Mettre à jour la date de dernière modification
+        stats['last_updated'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        save_catalog(CATALOG)
+    except Exception as e:
+        logger.error(f"Erreur lors du nettoyage des statistiques: {e}")
+
+def clean_text(text):
+    emoji_pattern = re.compile("["
+                           u"\U0001F600-\U0001F64F"  # emoticons
+                           u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                           u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                           u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                           u"\U00002500-\U00002BEF"  # chinese char
+                           u"\U00002702-\U000027B0"
+                           u"\U00002702-\U000027B0"
+                           u"\U000024C2-\U0001F251"
+                           u"\U0001f926-\U0001f937"
+                           u"\U00010000-\U0010ffff"
+                           u"\u2640-\u2642"
+                           u"\u2600-\u2B55"
+                           u"\u200d"
+                           u"\u23cf"
+                           u"\u23e9"
+                           u"\u231a"
+                           u"\ufe0f"  # dingbats
+                           u"\u3030"
+                           "]+", flags=re.UNICODE)
+    return emoji_pattern.sub(r'', text)
 
 def clean_stats():
     """Nettoie les statistiques des produits et catégories qui n'existent plus"""
