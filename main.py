@@ -23,6 +23,9 @@ STATS_CACHE = None
 LAST_CACHE_UPDATE = None
 admin_features = None
 
+# Désactiver les logs de httpx
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # Configuration du logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -1522,72 +1525,77 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                     save_catalog(CATALOG)
 
     elif query.data.startswith(("next_media_", "prev_media_")):
-        try:
-            _, direction, category, product_name = query.data.split("_", 3)
-            product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
+            try:
+                _, direction, short_category, short_product = query.data.split("_", 3)
+            
+                # Trouver la vraie catégorie
+                category = next((cat for cat in CATALOG.keys() if cat.startswith(short_category) or short_category.startswith(cat)), None)
+                if category:
+                    # Trouver le vrai produit en utilisant le début du nom
+                    product = next((p for p in CATALOG[category] if p['name'].startswith(short_product) or short_product.startswith(p['name'])), None)
 
-            if product and 'media' in product:
-                media_list = sorted(product['media'], key=lambda x: x.get('order_index', 0))
-                total_media = len(media_list)
-                current_index = context.user_data.get('current_media_index', 0)
+                    if product and 'media' in product:
+                        media_list = sorted(product['media'], key=lambda x: x.get('order_index', 0))
+                        total_media = len(media_list)
+                        current_index = context.user_data.get('current_media_index', 0)
 
-                # Navigation simple
-                if direction == "next":
-                    current_index = current_index + 1
-                    if current_index >= total_media:
-                        current_index = 0
-                else:  # prev
-                    current_index = current_index - 1
-                    if current_index < 0:
-                        current_index = total_media - 1
+                        # Le reste de votre code reste identique
+                        if direction == "next":
+                            current_index = current_index + 1
+                            if current_index >= total_media:
+                                current_index = 0
+                        else:  # prev
+                            current_index = current_index - 1
+                            if current_index < 0:
+                                current_index = total_media - 1
 
-                context.user_data['current_media_index'] = current_index
-                current_media = media_list[current_index]
+                        context.user_data['current_media_index'] = current_index
+                        current_media = media_list[current_index]
 
-                caption = f"📱 *{product['name']}*\n\n"
-                caption += f"💰 *Prix:*\n{product['price']}\n\n"
-                caption += f"📝 *Description:*\n{product['description']}"
+                        caption = f"📱 *{product['name']}*\n\n"
+                        caption += f"💰 *Prix:*\n{product['price']}\n\n"
+                        caption += f"📝 *Description:*\n{product['description']}"
 
-                keyboard = []
-                if total_media > 1:
-                    keyboard.append([
-                        InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{category}_{product_name}"),
-                        InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{category}_{product_name}")
-                    ])
-                keyboard.append([
-                    InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}"),
-                    InlineKeyboardButton(
-                        "🛒 Commander",
-                        **({"url": CONFIG.get('order_url')} if CONFIG.get('order_url') else {"callback_data": "show_order_text"})
-                    )
-                ])
+                        keyboard = []
+                        if total_media > 1:
+                            keyboard.append([
+                                InlineKeyboardButton("⬅️ Précédent", callback_data=f"prev_media_{short_category}_{short_product}"),
+                                InlineKeyboardButton("➡️ Suivant", callback_data=f"next_media_{short_category}_{short_product}")
+                            ])
+                        keyboard.append([
+                            InlineKeyboardButton("🔙 Retour à la catégorie", callback_data=f"view_{category}"),
+                            InlineKeyboardButton(
+                                "🛒 Commander",
+                                **({"url": CONFIG.get('order_url')} if CONFIG.get('order_url') else {"callback_data": "show_order_text"})
+                            )
+                        ])
 
-                try:
-                    await query.message.delete()
-                except Exception as e:
-                    print(f"Erreur lors de la suppression du message: {e}")
+                        try:
+                            await query.message.delete()
+                        except Exception as e:
+                            print(f"Erreur lors de la suppression du message: {e}")
 
-                if current_media['media_type'] == 'photo':
-                    message = await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
-                        photo=current_media['media_id'],
-                        caption=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                else:  # video
-                    message = await context.bot.send_video(
-                        chat_id=query.message.chat_id,
-                        video=current_media['media_id'],
-                        caption=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                context.user_data['last_product_message_id'] = message.message_id
+                        if current_media['media_type'] == 'photo':
+                            message = await context.bot.send_photo(
+                                chat_id=query.message.chat_id,
+                                photo=current_media['media_id'],
+                                caption=caption,
+                                reply_markup=InlineKeyboardMarkup(keyboard),
+                                parse_mode='Markdown'
+                            )
+                        else:  # video
+                            message = await context.bot.send_video(
+                                chat_id=query.message.chat_id,
+                                video=current_media['media_id'],
+                                caption=caption,
+                                reply_markup=InlineKeyboardMarkup(keyboard),
+                                parse_mode='Markdown'
+                            )
+                        context.user_data['last_product_message_id'] = message.message_id
 
-        except Exception as e:
-            print(f"Erreur lors de la navigation des médias: {e}")
-            await query.answer("Une erreur est survenue")
+            except Exception as e:
+                print(f"Erreur lors de la navigation des médias: {e}")
+                await query.answer("Une erreur est survenue")
 
     elif query.data == "edit_product":
         keyboard = []
