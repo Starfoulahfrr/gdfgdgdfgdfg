@@ -1564,45 +1564,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='Markdown'
             )
 
-    elif query.data.startswith("p_"):  # Pour afficher un produit
-        try:
-            product_id = query.data.replace("p_", "")
-            category = context.user_data.get('current_category')
-            product_name = context.user_data['products_mapping'].get(product_id)
-        
-            if category and product_name:
-                product = next((p for p in CATALOG[category] if p['name'] == product_name), None)
-                if product:
-                    # Mise à jour des stats
-                    if 'product_views' not in CATALOG['stats']:
-                        CATALOG['stats']['product_views'] = {}
-                    if category not in CATALOG['stats']['product_views']:
-                        CATALOG['stats']['product_views'][category] = {}
-                    if product_name not in CATALOG['stats']['product_views'][category]:
-                        CATALOG['stats']['product_views'][category][product_name] = 0
-                
-                    CATALOG['stats']['product_views'][category][product_name] += 1
-                    save_catalog(CATALOG)
-
-                    text = (f"*{product['name']}*\n\n"
-                           f"💰 *Prix:*\n{product['price']}\n\n"
-                           f"📝 *Description:*\n{product['description']}")
-                
-                    keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data=f"view_{category}")]]
-                
-                    if 'media' in product:
-                        # Votre logique existante pour les médias
-                        pass
-                    else:
-                        await query.message.edit_text(
-                            text,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-        except Exception as e:
-            print(f"Erreur dans l'affichage du produit: {e}")
-            await query.answer("Une erreur est survenue", show_alert=True)
-
     elif query.data.startswith(("next_media_", "prev_media_")):
         try:
             _, direction, category, product_name = query.data.split("_", 3)
