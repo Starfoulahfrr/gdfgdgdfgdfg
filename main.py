@@ -773,6 +773,18 @@ async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message or update.edited_message
     chat_id = message.chat_id
     
+    # Vérifier s'il y a déjà une partie en cours dans ce chat
+    for g in active_games.values():
+        if hasattr(g, 'initial_chat_id') and g.initial_chat_id == chat_id and g.game_status == 'playing':
+            error_msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text="❌ Une partie est déjà en cours dans ce chat!"
+            )
+            await message.delete()
+            await asyncio.sleep(3)
+            await error_msg.delete()
+            return
+    
     if chat_id in last_end_game_message:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=last_end_game_message[chat_id])
