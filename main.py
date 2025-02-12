@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771904"
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -62,14 +62,18 @@ class MultiPlayerGame:
         self.game_status = 'waiting'
         self.bet_amount = None  # Pour stocker la mise initiale
         self.created_at = datetime.utcnow()  # Pour tracker le temps de création
+        self.current_hand = 0 
 
     def add_player(self, player_id, bet):
         if len(self.players) < MAX_PLAYERS and player_id not in self.players:
             self.players[player_id] = {
-                'hand': [],
+                'hands': [[]],
+                'current_hand': 0,
                 'bet': bet,
                 'status': 'playing'
             }
+            if player_id == self.host_id:
+                self.bet_amount = bet
             return True
         return False
 
@@ -97,18 +101,6 @@ class MultiPlayerGame:
             return False
         time_diff = datetime.utcnow() - self.created_at
         return time_diff.total_seconds() >= 300  # 5 minutes
-
-    def add_player(self, player_id, bet):
-        if len(self.players) < MAX_PLAYERS and player_id not in self.players:
-            self.players[player_id] = {
-                'hand': [],
-                'bet': bet,
-                'status': 'playing'
-            }
-            if player_id == self.host_id:  # Si c'est l'hôte, on stocke la mise initiale
-                self.bet_amount = bet
-            return True
-        return False
 
     def calculate_hand(self, hand):
         """Calcule la valeur d'une main"""
@@ -242,6 +234,31 @@ class MultiPlayerGame:
                     player_data['status'] = 'push'
                     db.update_game_result(player_id, player_data['bet'], 'push')
 
+    def can_split(self, player_id):
+        player = self.players.get(player_id)
+        if not player or len(player['hands'][player['current_hand']]) != 2:
+            return False
+    
+        hand = player['hands'][player['current_hand']]
+        return (len(hand) == 2 and 
+                hand[0].rank == hand[1].rank and 
+                len(player['hands']) < 4)  # Maximum 4 splits possibles
+
+    def split_hand(self, player_id):
+        player = self.players[player_id]
+        current_hand = player['hands'][player['current_hand']]
+    
+        if not self.can_split(player_id):
+            return False
+        
+        # Créer une nouvelle main avec la deuxième carte
+        new_hand = [current_hand.pop()]
+        # Ajouter une carte à chaque main
+        current_hand.append(self.deck.deal())
+        new_hand.append(self.deck.deal())
+        # Ajouter la nouvelle main
+        player['hands'].append(new_hand)
+        return True
 
 class DatabaseManager:
     def __init__(self):
@@ -1034,10 +1051,51 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
     # Joueurs
     for player_id, player_data in game.players.items():
         user = await context.bot.get_chat(player_id)
-        hand = player_data['hand']
-        total = game.calculate_hand(hand)
-        status = player_data['status']
-        cards = ' '.join(str(card) for card in hand)
+        # Pour chaque main du joueur
+        for hand in player_data['hands']:  # hand contiendra directement les cartes
+            total = game.calculate_hand(hand)
+            status = player_data['status']
+            cards = ' '.join(str(card) for card in hand)  # Convertir chaque carte en string
+            
+            # Status et résultats
+            status_icon = "🎮"  # Défaut
+            result_text = ""
+
+            if game.game_status == 'finished':
+                if status == 'blackjack':
+                    winnings = int(player_data['bet'] * 2.5)
+                    status_icon = "🏆"
+                    result_text = f"+{winnings}"
+                elif status == 'win':
+                    winnings = player_data['bet'] * 2
+                    status_icon = "💰"
+                    result_text = f"+{winnings}"
+                elif status == 'lose':
+                    status_icon = "💀"
+                    result_text = f"-{player_data['bet']}"
+                elif status == 'push':
+                    status_icon = "🤝"
+                    result_text = "±0"
+                elif status == 'bust':
+                    status_icon = "💥"
+                    result_text = f"-{player_data['bet']}"
+            elif status == 'stand':
+                status_icon = "⏸"
+            elif status == 'bust':
+                status_icon = "💥"
+
+            hand_index = player_data['hands'].index(hand)
+            hand_text = f" (Main {hand_index + 1})" if len(player_data['hands']) > 1 else ""
+            
+            game_text += (
+                f"{status_icon} *{user.first_name}*{hand_text} │ {cards}\n"  # Ajout des cartes ici
+                f"├ Total: [{total}]\n"
+                f"├ Mise: {player_data['bet']} 💵"
+            )
+            if result_text:
+                game_text += f" │ {result_text}"
+            game_text += "\n──────────────\n\n"
+
         
         # Status et résultats
         status_icon = "🎮"  # Défaut
@@ -1104,13 +1162,21 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
 
     # Boutons de jeu
     keyboard = None
-    if game.game_status == 'playing' and game.get_current_player_id():
-        keyboard = InlineKeyboardMarkup([
+    if game.game_status == 'playing' and (current_player_id := game.get_current_player_id()):
+        buttons = [
             [
                 InlineKeyboardButton("🎯 CARTE", callback_data="hit"),
                 InlineKeyboardButton("⏹ STOP", callback_data="stand")
             ]
-        ])
+        ]
+        
+        # Ajouter le bouton SPLIT uniquement si c'est possible
+        if game.can_split(current_player_id):
+            buttons.append([
+                InlineKeyboardButton("✂️ SPLIT", callback_data="split")
+            ])
+        
+        keyboard = InlineKeyboardMarkup(buttons)
     try:
         if game.game_status == 'finished':
             # Si c'est un callback_query, supprime le message avec les boutons
@@ -1260,6 +1326,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Ce n'est pas votre tour!")
         return
     
+    if query.data == "split":
+        if game.split_hand(user.id):
+            await query.answer("✂️ Main splittée!")
+        else:
+            await query.answer("❌ Split impossible!")
+
     player_data = game.players[user.id]
     game_ended = False
     
