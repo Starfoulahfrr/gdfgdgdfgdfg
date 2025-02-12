@@ -1691,16 +1691,6 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                         game_ended = game.next_player()
                         game.last_action_time = datetime.utcnow()
 
-                        # Supprimer le message avec les boutons avant d'afficher le nouveau statut
-                        if hasattr(game, 'initial_chat_id') and game.initial_chat_id in game_messages:
-                            try:
-                                await context.bot.delete_message(
-                                    chat_id=game.initial_chat_id,
-                                    message_id=game_messages[game.initial_chat_id]
-                                )
-                            except Exception:
-                                pass
-
                         if game_ended:
                             game.game_status = 'finished'
                             game.resolve_dealer()
