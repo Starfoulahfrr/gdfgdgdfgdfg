@@ -83,8 +83,11 @@ class MultiPlayerGame:
 
     def can_split(self, player_id):
         player_data = self.players[player_id]
-        # Vérifie si le joueur a exactement deux cartes de même rang
-        return len(player_data['hand']) == 2 and player_data['hand'][0].rank == player_data['hand'][1].rank
+        # Vérifie si le joueur a exactement deux cartes de même rang ou deux cartes de valeur 10
+        return len(player_data['hand']) == 2 and (
+            player_data['hand'][0].rank == player_data['hand'][1].rank or
+            (player_data['hand'][0].rank in ['10', 'J', 'Q', 'K'] and player_data['hand'][1].rank in ['10', 'J', 'Q', 'K'])
+        )
 
     def split_hand(self, player_id):
         player_data = self.players[player_id]
@@ -233,29 +236,28 @@ class MultiPlayerGame:
     def determine_winners(self):
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-        
+    
         for player_id, player_data in self.players.items():
-            if player_data['status'] == 'bust':
-                db.update_game_result(player_id, player_data['bet'], 'lose')
-                continue
-            elif player_data['status'] == 'blackjack':
-                db.update_game_result(player_id, player_data['bet'], 'blackjack')
-                continue
-            elif player_data['status'] == 'stand':
-                player_total = self.calculate_hand(player_data['hand'])
+            for hand_key in ['hand', 'second_hand']:
+                if hand_key in player_data:
+                    player_total = self.calculate_hand(player_data[hand_key])
+                    result = ""
+                    if player_data['status'] == 'bust':
+                        result = 'lose'
+                    elif player_data['status'] == 'blackjack':
+                        result = 'blackjack'
+                    elif player_data['status'] == 'stand':
+                        if dealer_bust:
+                            result = 'win'
+                        elif player_total > dealer_total:
+                            result = 'win'
+                        elif player_total < dealer_total:
+                            result = 'lose'
+                        else:
+                            result = 'push'
                 
-                if dealer_bust:
-                    player_data['status'] = 'win'
-                    db.update_game_result(player_id, player_data['bet'], 'win')
-                elif player_total > dealer_total:
-                    player_data['status'] = 'win'
-                    db.update_game_result(player_id, player_data['bet'], 'win')
-                elif player_total < dealer_total:
-                    player_data['status'] = 'lose'
-                    db.update_game_result(player_id, player_data['bet'], 'lose')
-                else:
-                    player_data['status'] = 'push'
-                    db.update_game_result(player_id, player_data['bet'], 'push')
+                    if result:
+                        db.update_game_result(player_id, player_data['bet'], result)
 
 
 class DatabaseManager:
@@ -1053,7 +1055,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         if 'second_hand' in player_data:
             hands.append(player_data['second_hand'])
         
-        for hand in hands:
+        for index, hand in enumerate(hands):
             total = game.calculate_hand(hand)
             status = player_data['status']
             cards = ' '.join(str(card) for card in hand)
@@ -1090,6 +1092,8 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 f"├ Total: {total}\n"
                 f"├ Mise: {player_data['bet']} 💵"
             )
+            if index == 1:
+                game_text += " (Seconde main)"
             if result_text:
                 game_text += f" │ {result_text}"
             game_text += "\n──────────────\n\n"
@@ -1099,18 +1103,22 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         game_text += "*RÉSULTATS*\n"
         for player_id, player_data in game.players.items():
             user = await context.bot.get_chat(player_id)
-            status = player_data['status']
-            result_line = ""
-            if status == 'blackjack':
-                winnings = int(player_data['bet'] * 2.5)
-                result_line = f"👑 {user.first_name}: *+{winnings}*"
-            elif status == 'win':
-                winnings = player_data['bet'] * 2
-                result_line = f"💰 {user.first_name}: *+{winnings}*"
-            elif status in ['lose', 'bust']:
-                result_line = f"💸 {user.first_name}: *-{player_data['bet']}*"
-            elif status == 'push':
-                result_line = f"🤝 {user.first_name}: *±0*"
+            total_winnings = 0
+            all_hands_result_text = ""
+            for hand_key in ['hand', 'second_hand']:
+                if hand_key in player_data:
+                    status = player_data['status']
+                    if status == 'blackjack':
+                        winnings = int(player_data['bet'] * 2.5)
+                        total_winnings += winnings
+                    elif status == 'win':
+                        winnings = player_data['bet'] * 2
+                        total_winnings += winnings
+                    elif status in ['lose', 'bust']:
+                        total_winnings -= player_data['bet']
+                    elif status == 'push':
+                        total_winnings += 0
+            result_line = f"💰 {user.first_name}: *{total_winnings:+}*"
             game_text += f"{result_line}\n"
         game_text += "\n🎮 */bj [mise]* pour rejouer"
     elif current_player_id := game.get_current_player_id():
