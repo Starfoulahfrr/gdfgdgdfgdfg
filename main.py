@@ -1442,7 +1442,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 if category not in CATALOG['stats']['category_views']:
                     CATALOG['stats']['category_views'][category] = 0
     
-                # Mettre à jour les statistiques de catégorie
+                # Mettre à jour les statistiques
                 CATALOG['stats']['category_views'][category] += 1
                 CATALOG['stats']['total_views'] += 1
                 CATALOG['stats']['last_updated'] = datetime.now(paris_tz).strftime("%H:%M:%S")
@@ -1452,53 +1452,49 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
                 # Afficher la liste des produits
                 text = f"*{category}*\n\n"
                 keyboard = []
-            
-                # Vérifier si la catégorie contient des produits
-                if not products:
-                    text += "Cette catégorie est vide."
-                else:
-                    for product in products:
-                        keyboard.append([InlineKeyboardButton(
-                            product['name'],
-                            callback_data=f"product_{category[:10]}_{product['name'][:20]}"
-                        )])
+                for product in products:
+                    keyboard.append([InlineKeyboardButton(
+                        product['name'],
+                        callback_data=f"product_{category[:10]}_{product['name'][:20]}"
+                    )])
 
                 keyboard.append([InlineKeyboardButton("🔙 Retour au menu", callback_data="show_categories")])
 
                 try:
-                    # Suppression du dernier message de produit (photo ou vidéo)
+                    # Suppression du dernier message de produit (photo ou vidéo) si existe
                     if 'last_product_message_id' in context.user_data:
                         await context.bot.delete_message(
                             chat_id=query.message.chat_id,
                             message_id=context.user_data['last_product_message_id']
                         )
                         del context.user_data['last_product_message_id']
-            
-                    await context.bot.delete_message(
-                        chat_id=query.message.chat_id,
-                        message_id=query.message.message_id
-                    )
-                    print(f"Texte du message : {text}")
-                    print(f"Clavier : {keyboard}")
-                    message = await context.bot.send_message(
-                        chat_id=query.message.chat_id,
+                
+                    # Modifier le message au lieu de le supprimer/recréer
+                    await query.message.edit_text(
                         text=text,
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         parse_mode='Markdown'
                     )
-                    context.user_data['category_message_id'] = message.message_id
+                
+                    # Sauvegarder les informations du message
+                    context.user_data['category_message_id'] = query.message.message_id
                     context.user_data['category_message_text'] = text
                     context.user_data['category_message_reply_markup'] = keyboard
+                
                 except Exception as e:
                     print(f"Erreur lors de la mise à jour du message des produits: {e}")
-                    # Si la mise à jour échoue, recréez le message
-                    message = await context.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=text,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['category_message_id'] = message.message_id
+                    try:
+                        # Si l'édition échoue, on essaie de recréer le message
+                        await query.message.delete()
+                        message = await context.bot.send_message(
+                            chat_id=query.message.chat_id,
+                            text=text,
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            parse_mode='Markdown'
+                        )
+                        context.user_data['category_message_id'] = message.message_id
+                    except Exception as e:
+                        print(f"Erreur critique lors de la gestion du message: {e}")
 
                 # Mettre à jour les stats des produits seulement s'il y en a
                 if products:
