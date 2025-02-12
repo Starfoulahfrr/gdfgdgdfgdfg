@@ -900,18 +900,19 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif query.data == "add_product":
         keyboard = []
-        for category in CATALOG.keys():
+        for idx, category in enumerate(CATALOG.keys()):
             if category != 'stats':
-                # Limite la taille du callback_data à 30 caractères tout en gardant le nom complet pour l'affichage
-                short_category = category[:30]
-                keyboard.append([
-                    InlineKeyboardButton(
-                        category,  # Garde le nom complet pour l'affichage
-                        callback_data=f"select_category_{short_category}"  # Version courte pour le callback
-                    )
-                ])
+                # Utiliser un ID numérique simple pour le callback
+                keyboard.append([InlineKeyboardButton(
+                    category,  # Garde le nom complet pour l'affichage
+                    callback_data=f"selcat_{idx}"  # Utilise juste un numéro
+                )])
+    
+        # Sauvegarder la liste des catégories dans le contexte
+        context.user_data['category_list'] = [cat for cat in CATALOG.keys() if cat != 'stats']
+    
         keyboard.append([InlineKeyboardButton("🔙 Annuler", callback_data="cancel_add_product")])
-
+    
         await query.message.edit_text(
             "📝 Sélectionnez la catégorie pour le nouveau produit:",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -919,9 +920,12 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         return SELECTING_CATEGORY
 
     elif query.data.startswith("select_category_"):
+        # Récupère la version courte de la catégorie du callback_data
         short_category = query.data.replace("select_category_", "")
-        # Find the full category name that starts with the shortened version
-        category = next((cat for cat in CATALOG.keys() if cat.startswith(short_category)), None)
+        # Trouve la catégorie complète correspondante
+        category = next((cat for cat in CATALOG.keys() 
+                        if cat[:30] == short_category or cat.startswith(short_category)), None)
+    
         if category:
             context.user_data['temp_product_category'] = category
             await query.message.edit_text(
@@ -932,6 +936,7 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return WAITING_PRODUCT_NAME
         else:
+            # Si la catégorie n'est pas trouvée
             await query.answer("Catégorie non trouvée", show_alert=True)
             return await show_admin_menu(update, context)
 
