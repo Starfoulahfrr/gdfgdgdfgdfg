@@ -35,7 +35,7 @@ game_logger.addHandler(file_handler)
 
 # Variables globales
 ADMIN_USERS = [5277718388, 5909979625]  # Remplacez par vos IDs admin
-TOKEN = "771"  # Remplacez par votre token
+TOKEN = "7719"  # Remplacez par votre token
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 DAILY_AMOUNT = 1000
@@ -48,6 +48,7 @@ last_game_message: Dict[int, int] = {}
 last_end_game_message: Dict[int, int] = {}
 CLASSEMENT_MESSAGE_ID = None
 CLASSEMENT_CHAT_ID = None
+
 
 class DatabaseManager:
     def __init__(self):
@@ -88,6 +89,15 @@ class DatabaseManager:
             );
         ''')
         self.conn.commit()
+
+    def user_exists(self, user_id: int) -> bool:
+        """Vérifie si un utilisateur existe dans la base de données"""
+        try:
+            self.cursor.execute('SELECT 1 FROM users WHERE user_id = ?', (user_id,))
+            return bool(self.cursor.fetchone())
+        except Exception as e:
+            game_logger.error(f"Error checking user existence: {e}")
+            return False
 
     def register_user(self, user_id: int, username: str) -> bool:
         try:
@@ -252,7 +262,6 @@ class DatabaseManager:
 
     def close(self):
         self.conn.close()
-
 # Initialiser la base de données
 db = DatabaseManager()
 
@@ -792,6 +801,34 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(stats_text, parse_mode=ParseMode.MARKDOWN)
     
+def cleanup_player_games(player_id: int):
+    """Nettoie les anciennes parties d'un joueur"""
+    # Supprimer les parties en attente du joueur
+    if player_id in waiting_games:
+        waiting_games.remove(player_id)
+    
+    # Supprimer toutes les parties actives où le joueur est présent
+    games_to_remove = []
+    for game_id, game in active_games.items():
+        if player_id in game.players:
+            # Si c'est une partie terminée ou en attente
+            if game.game_status in ['finished', 'waiting']:
+                games_to_remove.append(game_id)
+            # Si c'est une partie en cours, marquer le joueur comme "stand"
+            elif game.game_status == 'playing':
+                current_player = game.get_current_player_id()
+                if current_player == player_id:
+                    if current_hand := game.get_current_hand():
+                        current_hand.status = 'stand'
+                        game.next_hand()
+    
+    # Supprimer les parties identifiées
+    for game_id in games_to_remove:
+        if game_id in active_games:
+            del active_games[game_id]
+
+    game_logger.debug(f"Cleaned up games for player {player_id}")
+
 async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message or update.edited_message
