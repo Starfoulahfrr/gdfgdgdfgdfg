@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771904"
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -232,30 +232,33 @@ class MultiPlayerGame:
         """Tour du croupier"""
         while self.calculate_hand(self.dealer_hand) < 17:
             self.dealer_hand.append(self.deck.deal())
-
+            
     def determine_winners(self):
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-
+    
         for player_id, player_data in self.players.items():
             for hand_key in ['hand', 'second_hand']:
                 if hand_key in player_data:
                     player_total = self.calculate_hand(player_data[hand_key])
                     result = ""
-                    if player_total > 21:
-                        result = 'bust'
-                    elif player_total == 21:
-                        result = 'blackjack'
-                    elif player_total < dealer_total and not dealer_bust:
+                    if player_data['status'] == 'bust':
                         result = 'lose'
-                    elif player_total > dealer_total or dealer_bust:
-                        result = 'win'
-                    elif player_total == dealer_total:
-                        result = 'push'
+                    elif player_data['status'] == 'blackjack':
+                        result = 'blackjack'
+                    elif player_data['status'] == 'stand':
+                        if dealer_bust:
+                            result = 'win'
+                        elif player_total > dealer_total:
+                            result = 'win'
+                        elif player_total < dealer_total:
+                            result = 'lose'
+                        else:
+                            result = 'push'
                 
-                    player_data[f'{hand_key}_status'] = result
                     if result:
                         db.update_game_result(player_id, player_data['bet'], result)
+
 
 class DatabaseManager:
     def __init__(self):
@@ -1018,7 +1021,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         all_blackjack = True
         for player_data in game.players.values():
             if game.calculate_hand(player_data['hand']) == 21:
-                player_data['hand_status'] = 'blackjack'
+                player_data['status'] = 'blackjack'
             else:
                 all_blackjack = False
         if all_blackjack:
@@ -1054,8 +1057,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         
         for index, hand in enumerate(hands):
             total = game.calculate_hand(hand)
-            status_key = 'hand_status' if index == 0 else 'second_hand_status'
-            status = player_data.get(status_key, 'playing')
+            status = player_data['status']
             cards = ' '.join(str(card) for card in hand)
             
             # Status et résultats
@@ -1063,22 +1065,27 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             result_text = ""
 
             if game.game_status == 'finished':
-                if status == 'bust':
-                    result_text = f"-{player_data['bet']}"
-                elif status == 'blackjack':
+                if status == 'blackjack':
                     winnings = int(player_data['bet'] * 2.5)
+                    status_icon = "🏆"
                     result_text = f"+{winnings}"
                 elif status == 'win':
                     winnings = player_data['bet'] * 2
+                    status_icon = "💰"
                     result_text = f"+{winnings}"
                 elif status == 'lose':
+                    status_icon = "💀"
                     result_text = f"-{player_data['bet']}"
                 elif status == 'push':
+                    status_icon = "🤝"
                     result_text = "±0"
-                if status == 'stand':
-                    status_icon = "⏸"
-                if status == 'bust':
+                elif status == 'bust':
                     status_icon = "💥"
+                    result_text = f"-{player_data['bet']}"
+            elif status == 'stand':
+                status_icon = "⏸"
+            elif status == 'bust':
+                status_icon = "💥"
 
             game_text += (
                 f"{status_icon} *{user.first_name}* │ {cards}\n"
@@ -1096,21 +1103,18 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         game_text += "*RÉSULTATS*\n"
         for player_id, player_data in game.players.items():
             user = await context.bot.get_chat(player_id)
-            total_winnings = 0
-            for hand_key in ['hand', 'second_hand']:
-                if hand_key in player_data:
-                    status = player_data.get(f'{hand_key}_status', 'playing')
-                    if status == 'blackjack':
-                        winnings = int(player_data['bet'] * 2.5)
-                        total_winnings += winnings
-                    elif status == 'win':
-                        winnings = player_data['bet'] * 2
-                        total_winnings += winnings
-                    elif status in ['lose', 'bust']:
-                        total_winnings -= player_data['bet']
-                    elif status == 'push':
-                        total_winnings += 0
-            result_line = f"💰 {user.first_name}: *{total_winnings:+}*"
+            status = player_data['status']
+            result_line = ""
+            if status == 'blackjack':
+                winnings = int(player_data['bet'] * 2.5)
+                result_line = f"👑 {user.first_name}: *+{winnings}*"
+            elif status == 'win':
+                winnings = player_data['bet'] * 2
+                result_line = f"💰 {user.first_name}: *+{winnings}*"
+            elif status in ['lose', 'bust']:
+                result_line = f"💸 {user.first_name}: *-{player_data['bet']}*"
+            elif status == 'push':
+                result_line = f"🤝 {user.first_name}: *±0*"
             game_text += f"{result_line}\n"
         game_text += "\n🎮 */bj [mise]* pour rejouer"
     elif current_player_id := game.get_current_player_id():
