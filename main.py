@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "77190"
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -108,13 +108,13 @@ class MultiPlayerGame:
         """Divise la main d'un joueur en deux mains"""
         if not self.can_split(player_id):
             return False
-        
-        player_data = self.players[player_id]
     
+        player_data = self.players[player_id]
+
         # Créer la seconde main avec la deuxième carte
         second_card = player_data['hand'].pop()
         player_data['second_hand'] = [second_card, self.deck.deal()]
-        player_data['second_hand_status'] = 'playing'
+        player_data['second_hand_status'] = 'playing'  # Statut initial
     
         # Ajouter une carte à la première main
         player_data['hand'].append(self.deck.deal())
@@ -179,7 +179,12 @@ class MultiPlayerGame:
 
     def get_current_player_id(self):
         for player_id, player_data in self.players.items():
-            if player_data['status'] == 'playing':
+            current_hand = player_data.get('current_hand', 'hand')
+            if current_hand == 'hand' and player_data['status'] == 'playing':
+                return player_id
+            elif (current_hand == 'second_hand' and 
+                  'second_hand' in player_data and 
+                  player_data.get('second_hand_status') == 'playing'):
                 return player_id
         return None
 
@@ -1410,11 +1415,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data == "stand":
             current_hand = player_data.get('current_hand', 'hand')
-    
+
             if current_hand == 'hand' and 'second_hand' in player_data:
                 # Première main terminée, passer à la seconde
                 player_data['status'] = 'stand'
                 player_data['current_hand'] = 'second_hand'
+                player_data['second_hand_status'] = 'playing'  # IMPORTANT: Ajouter cette ligne
                 # Forcer la mise à jour de l'affichage avec les boutons
                 await query.answer("⏸ Première main terminée, passons à la seconde!")
                 await display_game(update, context, game)
