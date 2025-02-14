@@ -380,6 +380,12 @@ class MultiPlayerGame:
         self.dealer_hand.add_card(self.deck.deal())
         self.last_action_time = datetime.utcnow()
 
+    def calculate_hand(self, hand: Hand) -> int:
+        """Calcule la valeur d'une main"""
+        if not hand:
+            return 0
+        return hand.get_value()
+
     def get_current_player_id(self) -> Optional[int]:
         """Récupère l'ID du joueur actuel"""
         player_ids = list(self.players.keys())
@@ -531,6 +537,307 @@ class MultiPlayerGame:
         
 # Handlers des commandes
 
+async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game: MultiPlayerGame):
+    """Affiche le jeu avec un design élégant et professionnel"""
+    chat_id = game.initial_chat_id
+    
+    # En-tête élégant
+    game_text = (
+        "⚜️ *BLACKJACK VIP* ⚜️\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+    )
+
+    # Section croupier
+    dealer_total = game.calculate_hand(game.dealer_hand)
+    if game.game_status == 'finished':
+        game_text += (
+            "*CROUPIER*\n"
+            f"└ {game.dealer_hand} • Total : {dealer_total}\n"
+            "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        )
+    else:
+        game_text += (
+            "*CROUPIER*\n"
+            f"└ {game.dealer_hand.cards[0]} ?\n"
+            "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        )
+
+    # Gestion des joueurs
+    current_player_id = game.get_current_player_id()
+    total_pot = 0
+    
+    # Trier les joueurs (actif en premier)
+    players_info = []
+    for player_id, player_data in game.players.items():
+        total_pot += player_data['bet']
+        is_current = (player_id == current_player_id)
+        players_info.append({
+            'id': player_id,
+            'data': player_data,
+            'hands': game.hands.get(player_id, []),
+            'is_current': is_current,
+            'name': await get_player_name(context, player_id)
+        })
+    
+    players_info.sort(key=lambda x: (not x['is_current'], x['id']))
+
+    # Afficher les joueurs
+    for player in players_info:
+        try:
+            if player['is_current']:
+                game_text += "*JOUEUR ACTUEL*\n"
+            
+            game_text += (
+                f"• {player['name']}\n"
+                f"└ Mise : {player['data']['bet']:,} €\n"
+            )
+
+            for i, hand in enumerate(player['hands']):
+                total = game.calculate_hand(hand)
+                
+                if len(player['hands']) > 1:
+                    game_text += f"  Main {i+1} :\n"
+                
+                if hand.status == 'playing':
+                    game_text += f"  └ {hand} • Total : {total}\n"
+                else:
+                    result_info = {
+                        'blackjack': (f"+{int(hand.bet * 2.5):,} €", "🎯"),
+                        'win': (f"+{hand.bet * 2:,} €", "✓"),
+                        'bust': (f"-{hand.bet:,} €", "×"),
+                        'lose': (f"-{hand.bet:,} €", "×"),
+                        'push': ("Égalité", "•")
+                    }.get(hand.status, ("", ""))
+                    
+                    game_text += f"  └ {hand} • {total} {result_info[1]} {result_info[0]}\n"
+            
+            game_text += "\n"
+
+        except Exception as e:
+            game_logger.error(f"Error displaying player {player['id']}: {e}")
+            continue
+
+    # Interface du joueur actuel
+    keyboard = None
+    if game.game_status == 'playing' and current_player_id:
+        current_hand = game.get_current_hand()
+        if current_hand and current_hand.status == 'playing':
+            total = game.calculate_hand(current_hand)
+            
+            game_text += (
+                "*ACTIONS DISPONIBLES*\n"
+                f"Main actuelle : {total}\n\n"
+            )
+            
+            # Boutons élégants
+            buttons = []
+            row1 = [
+                InlineKeyboardButton("CARTE", callback_data="hit"),
+                InlineKeyboardButton("RESTER", callback_data="stand")
+            ]
+            buttons.append(row1)
+            
+            if game.can_split(current_player_id):
+                row2 = [InlineKeyboardButton("SÉPARER", callback_data="split")]
+                buttons.append(row2)
+            
+            keyboard = InlineKeyboardMarkup(buttons)
+
+    # Informations de la partie
+    game_text += (
+        "▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        f"*POT TOTAL* : {total_pot:,} €\n"
+        f"*JOUEURS* : {len(game.players)}/40\n"
+    )
+
+    try:
+        # Gestion des messages
+        if chat_id in game_messages:
+            try:
+                await context.bot.delete_message(chat_id, game_messages[chat_id])
+            except:
+                pass
+
+        new_message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=game_text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        game_messages[chat_id] = new_message.message_id
+
+        # Message de fin élégant
+        if game.game_status == 'finished':
+            await asyncio.sleep(1)
+            
+            final_message = (
+                "⚜️ *RÉSULTATS DE LA PARTIE* ⚜️\n"
+                "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+            )
+            
+            for player in players_info:
+                try:
+                    total_won = 0
+                    hand_results = []
+                    
+                    for hand in player['hands']:
+                        if hand.status == 'blackjack':
+                            won = int(hand.bet * 2.5)
+                            total_won += won
+                            hand_results.append(f"Blackjack (+{won:,} €)")
+                        elif hand.status == 'win':
+                            won = hand.bet * 2
+                            total_won += won
+                            hand_results.append(f"Gagné (+{won:,} €)")
+                        elif hand.status in ['lose', 'bust']:
+                            total_won -= hand.bet
+                            hand_results.append(f"Perdu (-{hand.bet:,} €)")
+                        elif hand.status == 'push':
+                            hand_results.append("Égalité")
+                    
+                    final_message += (
+                        f"*{player['name']}*\n"
+                        f"└ {' | '.join(hand_results)}\n"
+                        f"  *Résultat : {'+'if total_won > 0 else ''}{total_won:,} €*\n\n"
+                    )
+                    
+                except Exception as e:
+                    continue
+
+            if chat_id in last_end_game_message:
+                try:
+                    await context.bot.delete_message(chat_id, last_end_game_message[chat_id])
+                except:
+                    pass
+            
+            end_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=final_message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            last_end_game_message[chat_id] = end_message.message_id
+
+    except Exception as e:
+        game_logger.error(f"Error in display_game: {e}")
+
+def calculate_bust_probability(total):
+    """Calcule la probabilité de bust"""
+    if total >= 21:
+        return 100
+    safe_cards = 21 - total
+    return min(100, max(0, round((13 - safe_cards) / 13 * 100)))
+
+async def format_active_player(context, player, game):
+    """Format l'affichage du joueur actif"""
+    emoji, rank_title, _, _ = db.get_player_rank(db.get_balance(player['id']))
+    text = (
+        f"▶️ *{player['name']}* ({emoji})\n"
+        f"├ Mise: {player['data']['bet']:,} 💰\n"
+    )
+    
+    for i, hand in enumerate(player['hands']):
+        total = game.calculate_hand(hand)
+        text += (
+            f"└ {'MAIN ' + str(i+1) if len(player['hands']) > 1 else 'CARTES'}\n"
+            f"  ├ {hand}\n"
+            f"  └ Total: *{total}*\n"
+        )
+    
+    return text + "\n"
+
+async def format_waiting_player(context, player, game):
+    """Format l'affichage des joueurs en attente"""
+    text = f"│ {player['name']} ▫️ {player['data']['bet']:,} 💰\n"
+    for hand in player['hands']:
+        total = game.calculate_hand(hand)
+        text += f"│ └ {hand} (*{total}*)\n"
+    return text
+
+async def format_finished_player(context, player, game):
+    """Format l'affichage des joueurs ayant terminé"""
+    result_emoji = "🎯" if any(h.status == 'blackjack' for h in player['hands']) else (
+        "✨" if any(h.status == 'win' for h in player['hands']) else "📉"
+    )
+    text = f"│ {result_emoji} {player['name']}: "
+    
+    results = []
+    for hand in player['hands']:
+        total = game.calculate_hand(hand)
+        if hand.status == 'blackjack':
+            results.append(f"BJ ({total})")
+        else:
+            results.append(str(total))
+    
+    text += " | ".join(results) + "\n"
+    return text
+
+def calculate_game_stats(game):
+    """Calcule les statistiques globales de la partie"""
+    stats = {
+        'blackjacks': 0,
+        'busts': 0,
+        'biggest_win': 0
+    }
+    
+    for player_id, hands in game.hands.items():
+        for hand in hands:
+            if hand.status == 'blackjack':
+                stats['blackjacks'] += 1
+            elif hand.status == 'bust':
+                stats['busts'] += 1
+            
+            if hand.status in ['blackjack', 'win']:
+                win_amount = int(hand.bet * 2.5) if hand.status == 'blackjack' else hand.bet * 2
+                stats['biggest_win'] = max(stats['biggest_win'], win_amount)
+    
+    return stats
+
+async def format_player_results(context, player_id, game):
+    """Format les résultats finaux d'un joueur"""
+    try:
+        player = await context.bot.get_chat(player_id)
+        hands = game.hands[player_id]
+        total_won = 0
+        results = []
+        
+        for hand in hands:
+            result = ""
+            if hand.status == 'blackjack':
+                won = int(hand.bet * 2.5)
+                total_won += won
+                result = f"🎯 BJ +{won:,}"
+            elif hand.status == 'win':
+                won = hand.bet * 2
+                total_won += won
+                result = f"✨ +{won:,}"
+            elif hand.status in ['lose', 'bust']:
+                total_won -= hand.bet
+                result = f"📉 -{hand.bet:,}"
+            elif hand.status == 'push':
+                result = "🤝 ±0"
+            
+            total = game.calculate_hand(hand)
+            results.append(f"{result} ({total})")
+        
+        result_text = (
+            f"{'🔥' if total_won > 0 else '😢'} *{player.first_name}*\n"
+            f"└ {' | '.join(results)}\n"
+            f"  *{'+'if total_won > 0 else ''}{total_won:,}* 💰\n\n"
+        )
+        
+        return result_text
+        
+    except Exception as e:
+        game_logger.error(f"Error formatting results for player {player_id}: {e}")
+        return ""
+
+async def get_player_name(context: ContextTypes.DEFAULT_TYPE, player_id: int) -> str:
+    """Récupère le nom d'un joueur"""
+    try:
+        player = await context.bot.get_chat(player_id)
+        return player.first_name
+    except:
+        return "Joueur"
 
 async def cmd_bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Affiche le solde et les informations bancaires du joueur"""
