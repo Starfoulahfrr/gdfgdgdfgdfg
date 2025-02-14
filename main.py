@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771"
+TOKEN = "7712"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -105,11 +105,74 @@ class MultiPlayerGame:
                 'bet': bet,
                 'status': 'playing'
             }
-            self.current_hand[player_id] = 1  # Main 1 par défaut
-            if player_id == self.host_id:
+            if player_id == self.host_id:  # Si c'est l'hôte, on stocke la mise initiale
                 self.bet_amount = bet
             return True
         return False
+
+    def calculate_hand(self, hand):
+        """Calcule la valeur d'une main"""
+        if not hand:
+            return 0
+            
+        value = 0
+        aces = 0
+        
+        for card in hand:
+            if card.rank in ['J', 'Q', 'K']:
+                value += 10
+            elif card.rank == 'A':
+                aces += 1
+            else:
+                value += int(card.rank)
+        
+        # Ajouter les as avec la meilleure valeur possible
+        for _ in range(aces):
+            if value + 11 <= 21:
+                value += 11
+            else:
+                value += 1
+                
+        return value
+
+    def get_current_player_id(self):
+        for player_id, player_data in self.players.items():
+            if player_data['status'] == 'playing':
+                return player_id
+        return None
+
+    def next_player(self):
+        """Passe au joueur suivant"""
+        current_player_id = self.get_current_player_id()
+        found_current = False
+        has_next_player = False
+        
+        # Créer une liste ordonnée des joueurs
+        player_ids = list(self.players.keys())
+        if current_player_id in player_ids:
+            current_index = player_ids.index(current_player_id)
+            # Chercher le prochain joueur à partir du joueur actuel
+            for i in range(current_index + 1, len(player_ids)):
+                next_player_id = player_ids[i]
+                if self.players[next_player_id]['status'] == 'playing':
+                    has_next_player = True
+                    break
+        
+        # Si aucun prochain joueur n'est trouvé
+        if not has_next_player:
+            # Vérifier si tous les joueurs ont terminé
+            all_finished = True
+            for player_data in self.players.values():
+                if player_data['status'] == 'playing':
+                    all_finished = False
+                    break
+            
+            if all_finished:
+                self.game_status = 'finished'
+                self.resolve_dealer()
+                self.determine_winners()
+                return True  # Indique que la partie est terminée
+        return False  # La partie continue
 
     def start_game(self):
         """Démarre la partie"""
@@ -136,114 +199,6 @@ class MultiPlayerGame:
     
         return True
 
-    def can_split(self, player_id):
-        """Vérifie si un joueur peut splitter sa main"""
-        if player_id not in self.players:
-            return False
-        hand = self.players[player_id]['hand']
-        # Vérifie si la main a exactement 2 cartes de même rang
-        if len(hand) != 2:
-            return False
-        return hand[0].rank == hand[1].rank
-
-    def split_hand(self, player_id):
-        """Effectue le split de la main"""
-        if not self.can_split(player_id) or player_id in self.split_hands:
-            return False
-
-        # Récupère la mise et la main actuelles
-        player = self.players[player_id]
-        bet = player['bet']
-
-        # Crée la deuxième main avec la deuxième carte
-        split_card = player['hand'].pop()
-        self.split_hands[player_id] = {
-            'hand': [split_card],
-            'bet': bet,
-            'status': 'playing'
-        }
-
-        # Ajoute une nouvelle carte à chaque main
-        player['hand'].append(self.deck.deal())
-        self.split_hands[player_id]['hand'].append(self.deck.deal())
-        
-        return True
-
-    def get_current_hand(self, player_id):
-        """Retourne le numéro de la main active (1 ou 2)"""
-        return self.current_hand.get(player_id, 1)
-
-    def switch_to_split_hand(self, player_id):
-        """Passe à la deuxième main"""
-        if player_id in self.split_hands:
-            self.current_hand[player_id] = 2
-            return True
-        return False
-
-    def calculate_hand(self, hand):
-        """Calcule la valeur d'une main"""
-        if not hand:
-            return 0
-            
-        value = 0
-        aces = 0
-        
-        for card in hand:
-            if card.rank in ['J', 'Q', 'K']:
-                value += 10
-            elif card.rank == 'A':
-                aces += 1
-            else:
-                value += int(card.rank)
-        
-        for _ in range(aces):
-            if value + 11 <= 21:
-                value += 11
-            else:
-                value += 1
-                
-        return value
-
-    def get_current_player_id(self):
-        for player_id, player_data in self.players.items():
-            if player_data['status'] == 'playing':
-                return player_id
-                
-            # Vérifie aussi la main splittée si elle existe
-            if player_id in self.split_hands and self.split_hands[player_id]['status'] == 'playing':
-                return player_id
-        return None
-
-    def next_player(self):
-        """Passe au joueur suivant"""
-        current_player_id = self.get_current_player_id()
-        
-        if not current_player_id:
-            return True
-
-        # Si le joueur a une main splittée et est sur la première main
-        if current_player_id in self.split_hands and self.get_current_hand(current_player_id) == 1:
-            # Si la première main est terminée, passe à la deuxième
-            if self.players[current_player_id]['status'] in ['bust', 'stand', 'blackjack']:
-                self.switch_to_split_hand(current_player_id)
-                return False
-
-        # Cherche le prochain joueur
-        found_current = False
-        for player_id in self.players.keys():
-            if found_current:
-                if self.players[player_id]['status'] == 'playing':
-                    self.current_hand[player_id] = 1
-                    return False
-            elif player_id == current_player_id:
-                found_current = True
-
-        # Si on arrive ici, c'est que tous les joueurs ont terminé
-        self.game_status = 'finished'
-        self.resolve_dealer()
-        self.determine_winners()
-        return True
-
     def deal_initial_cards(self):
         """Distribution initiale des cartes"""
         # Distribuer aux joueurs
@@ -265,36 +220,27 @@ class MultiPlayerGame:
         dealer_bust = dealer_total > 21
         
         for player_id, player_data in self.players.items():
-            # Évalue la première main
-            self._determine_hand_winner(player_id, player_data, dealer_total, dealer_bust, False)
-            
-            # Évalue la deuxième main si elle existe
-            if player_id in self.split_hands:
-                self._determine_hand_winner(player_id, self.split_hands[player_id], dealer_total, dealer_bust, True)
-
-    def _determine_hand_winner(self, player_id, hand_data, dealer_total, dealer_bust, is_split):
-        if hand_data['status'] == 'bust':
-            db.update_game_result(player_id, hand_data['bet'], 'lose')
-            return
-            
-        if hand_data['status'] == 'blackjack':
-            db.update_game_result(player_id, hand_data['bet'], 'blackjack')
-            return
-            
-        player_total = self.calculate_hand(hand_data['hand'])
-        
-        if dealer_bust:
-            hand_data['status'] = 'win'
-            db.update_game_result(player_id, hand_data['bet'], 'win')
-        elif player_total > dealer_total:
-            hand_data['status'] = 'win'
-            db.update_game_result(player_id, hand_data['bet'], 'win')
-        elif player_total < dealer_total:
-            hand_data['status'] = 'lose'
-            db.update_game_result(player_id, hand_data['bet'], 'lose')
-        else:
-            hand_data['status'] = 'push'
-            db.update_game_result(player_id, hand_data['bet'], 'push')
+            if player_data['status'] == 'bust':
+                db.update_game_result(player_id, player_data['bet'], 'lose')
+                continue
+            elif player_data['status'] == 'blackjack':
+                db.update_game_result(player_id, player_data['bet'], 'blackjack')
+                continue
+            elif player_data['status'] == 'stand':
+                player_total = self.calculate_hand(player_data['hand'])
+                
+                if dealer_bust:
+                    player_data['status'] = 'win'
+                    db.update_game_result(player_id, player_data['bet'], 'win')
+                elif player_total > dealer_total:
+                    player_data['status'] = 'win'
+                    db.update_game_result(player_id, player_data['bet'], 'win')
+                elif player_total < dealer_total:
+                    player_data['status'] = 'lose'
+                    db.update_game_result(player_id, player_data['bet'], 'lose')
+                else:
+                    player_data['status'] = 'push'
+                    db.update_game_result(player_id, player_data['bet'], 'push')
 
 
 class DatabaseManager:
@@ -1092,40 +1038,42 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         total = game.calculate_hand(hand)
         status = player_data['status']
         cards = ' '.join(str(card) for card in hand)
-        current_hand = game.get_current_hand(player_id)
         
         # Status et résultats
-        status_icon = get_status_emoji(status)
+        status_icon = "🎮"  # Défaut
         result_text = ""
 
-        # Affichage principal
+        if game.game_status == 'finished':
+            if status == 'blackjack':
+                winnings = int(player_data['bet'] * 2.5)
+                status_icon = "🏆"
+                result_text = f"+{winnings}"
+            elif status == 'win':
+                winnings = player_data['bet'] * 2
+                status_icon = "💰"
+                result_text = f"+{winnings}"
+            elif status == 'lose':
+                status_icon = "💀"
+                result_text = f"-{player_data['bet']}"
+            elif status == 'push':
+                status_icon = "🤝"
+                result_text = "±0"
+            elif status == 'bust':
+                status_icon = "💥"
+                result_text = f"-{player_data['bet']}"
+        elif status == 'stand':
+            status_icon = "⏸"
+        elif status == 'bust':
+            status_icon = "💥"
+        
+        # Affichage du joueur
         game_text += (
-            f"{status_icon} *{user.first_name}*\n"
-            f"Main 1 │ {cards}\n"
+            f"{status_icon} *{user.first_name}* │ {cards}\n"
             f"├ Total: [{total}]\n"
-            f"└ Mise: {player_data['bet']} 💵"
+            f"├ Mise: {player_data['bet']} 💵"
         )
-
-        # Si le joueur a splitté
-        if player_id in game.split_hands:
-            split_data = game.split_hands[player_id]
-            split_cards = ' '.join(str(card) for card in split_data['hand'])
-            split_total = game.calculate_hand(split_data['hand'])
-            split_status = split_data['status']
-            split_icon = get_status_emoji(split_status)
-
-            game_text += (
-                f"\n{split_icon} Main 2 │ {split_cards}\n"
-                f"├ Total: [{split_total}]\n"
-                f"└ Mise: {split_data['bet']} 💵"
-            )
-
-            # Indique la main active
-            if current_hand == 1:
-                game_text += " (Main 1 active)"
-            else:
-                game_text += " (Main 2 active)"
-
+        if result_text:
+            game_text += f" │ {result_text}"
         game_text += "\n──────────────\n\n"
 
     # Status actuel
@@ -1157,17 +1105,12 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
     # Boutons de jeu
     keyboard = None
     if game.game_status == 'playing' and game.get_current_player_id():
-        buttons = [
-            InlineKeyboardButton("🎯 CARTE", callback_data="hit"),
-            InlineKeyboardButton("⏹ STOP", callback_data="stand")
-        ]
-        
-        # Ajoute le bouton split si possible
-        current_player = game.get_current_player_id()
-        if game.can_split(current_player) and game.get_current_hand(current_player) == 1:
-            buttons.append(InlineKeyboardButton("✌️ SPLIT", callback_data="split"))
-        
-        keyboard = InlineKeyboardMarkup([buttons])
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🎯 CARTE", callback_data="hit"),
+                InlineKeyboardButton("⏹ STOP", callback_data="stand")
+            ]
+        ])
     try:
         # D'abord envoyer/mettre à jour le message principal du jeu
         if game.game_status == 'finished':
@@ -1254,6 +1197,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     chat_id = update.effective_chat.id
 
+    if query.data.startswith("admin_"):
+        if not is_admin(user.id):
+            await query.answer("❌ Action réservée aux administrateurs!", show_alert=True)
+            return
+            
+        _, action, host_id = query.data.split("_")
+        host_id = int(host_id)
+        
+        if host_id not in active_games:
+            await query.answer("❌ Cette partie n'existe plus!", show_alert=True)
+            return
+            
+        game = active_games[host_id]
+
+    if query.data == "start_game":
+        # Vérifier si l'utilisateur est le créateur de la partie
+        game = None
+        for g in active_games.values():
+            if g.host_id == user.id and g.game_status == 'waiting':
+                game = g
+                break
+        
+        if not game:
+            await query.answer("❌ Vous n'êtes pas le créateur de cette partie!")
+            return
+            
+        if len(game.players) < 1:
+            await query.answer("❌ Il faut au moins 1 joueur pour commencer!")
+            return
+            
+        # Démarrer la partie
+        if game.start_game():
+            if user.id in waiting_games:
+                waiting_games.remove(user.id)
+            await display_game(update, context, game)
+            await query.answer("✅ La partie commence!")
+        else:
+            await query.answer("❌ Impossible de démarrer la partie!")
+        return
+    
     # Trouver la partie active
     game = None
     for g in active_games.values():
@@ -1270,73 +1253,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Ce n'est pas votre tour!")
         return
     
-    current_hand = game.get_current_hand(user.id)
+    player_data = game.players[user.id]
     game_ended = False
     
     try:
-        if query.data == "split":
-            # Vérifie si le split est possible
-            if game.can_split(user.id):
-                # Vérifie le solde pour la deuxième mise
-                balance = db.get_balance(user.id)
-                bet_amount = game.players[user.id]['bet']
-                
-                if balance >= bet_amount:
-                    # Déduit la mise pour la deuxième main
-                    db.set_balance(user.id, balance - bet_amount)
-                    
-                    # Effectue le split
-                    if game.split_hand(user.id):
-                        await query.answer("✌️ Main splittée!")
-                    else:
-                        await query.answer("❌ Split impossible!")
-                else:
-                    await query.answer("❌ Solde insuffisant pour splitter!")
-            else:
-                await query.answer("❌ Split impossible!")
-
-        elif query.data == "hit":
-            # Détermine quelle main est active
-            if current_hand == 1:
-                player_data = game.players[user.id]
-                hand = player_data['hand']
-            else:
-                player_data = game.split_hands[user.id]
-                hand = player_data['hand']
-
+        if query.data == "hit":
             new_card = game.deck.deal()
-            hand.append(new_card)
-            total = game.calculate_hand(hand)
-
+            player_data['hand'].append(new_card)
+            total = game.calculate_hand(player_data['hand'])
+    
             if total > 21:
                 player_data['status'] = 'bust'
-                if current_hand == 1 and user.id in game.split_hands:
-                    game.switch_to_split_hand(user.id)
-                else:
-                    game_ended = game.next_player()
-                await query.answer("💥 Dépassé!")
-            elif total == 21:
+                game_ended = game.next_player()
+                await query.answer("💥 Vous avez dépassé 21!")
+            elif total == 21:  # Ajoutez cette condition
                 player_data['status'] = 'blackjack'
-                if current_hand == 1 and user.id in game.split_hands:
-                    game.switch_to_split_hand(user.id)
-                else:
-                    game_ended = game.next_player()
+                game_ended = game.next_player()
                 await query.answer("🌟 Blackjack!")
             else:
                 await query.answer(f"🎯 Total: {total}")
-
+        
         elif query.data == "stand":
-            if current_hand == 1:
-                game.players[user.id]['status'] = 'stand'
-                if user.id in game.split_hands:
-                    game.switch_to_split_hand(user.id)
-                else:
-                    game_ended = game.next_player()
-            else:
-                game.split_hands[user.id]['status'] = 'stand'
-                game_ended = game.next_player()
+            player_data['status'] = 'stand'
+            game_ended = game.next_player()
             await query.answer("⏹ Vous restez")
-
+        
         # Mise à jour de l'affichage
         await display_game(update, context, game)
         
