@@ -12,6 +12,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 active_games = {}
 waiting_games = set()
 game_messages = {}
+CLASSEMENT_MESSAGE_ID = None
+CLASSEMENT_CHAT_ID = None
 last_game_message = {}  # {chat_id: message_id}
 last_end_game_message = {}  # {chat_id: message_id}
 
@@ -23,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771"
+TOKEN = "771904"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -587,6 +589,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"\nCommandes disponibles :\n"
             f"/bj [mise] - Jouer au Blackjack\n"
             f"/bank - Voir votre solde\n"
+            f"/classement - Voir le classement\n"
             f"/daily - Réclamer votre bonus quotidien\n"
             f"/stats - Voir vos statistiques"
         )
@@ -1472,6 +1475,105 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN
     )
 
+async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu d'administration pour les admins"""
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ Cette commande est réservée aux administrateurs.")
+        return
+        
+    # Trouver toutes les parties en attente
+    waiting_games_list = []
+    for host_id, game in active_games.items():
+        if game.game_status == 'waiting':
+            host_name = game.get_host_name()
+            players_count = len(game.players)
+            total_bet = sum(p['bet'] for p in game.players.values())
+            waiting_games_list.append((host_id, host_name, players_count, total_bet))
+    
+    if not waiting_games_list:
+        await update.message.reply_text(
+            "🎮 *MENU ADMIN*\n\n"
+            "Aucune partie en attente.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+        
+    # Créer les boutons pour chaque partie
+    keyboard = []
+    for host_id, host_name, players_count, total_bet in waiting_games_list:
+        # Bouton pour forcer le démarrage
+        start_button = InlineKeyboardButton(
+            f"▶️ Start",
+            callback_data=f"admin_start_{host_id}"
+        )
+        # Bouton pour annuler
+        cancel_button = InlineKeyboardButton(
+            f"❌ Cancel",
+            callback_data=f"admin_cancel_{host_id}"
+        )
+        keyboard.append([start_button, cancel_button])
+    
+    message = "🎮 *MENU ADMIN*\n\n*Parties en attente:*\n\n"
+    
+    for host_id, host_name, players_count, total_bet in waiting_games_list:
+        message += (
+            f"👤 Hôte: *{host_name}*\n"
+            f"├ ID: `{host_id}`\n"
+            f"├ Joueurs: {players_count}\n"
+            f"└ Total mises: {total_bet} 💵\n\n"
+        )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global CLASSEMENT_MESSAGE_ID, CLASSEMENT_CHAT_ID
+    
+    cursor = db.conn.cursor()
+    cursor.execute("""
+        SELECT username, balance 
+        FROM users 
+        ORDER BY balance DESC 
+    """)
+    
+    rankings = cursor.fetchall()
+    
+    message = "🎰 *CLASSEMENT* 🎰\n\n"
+    
+    for i, (username, balance) in enumerate(rankings, 1):
+        current_rank = get_player_rank(balance)[0]  # On prend juste le premier élément du tuple
+            
+        if i == 1:
+            medal = "👑"
+        elif i == 2:
+            medal = "🥈"
+        elif i == 3:
+            medal = "🥉"
+        else:
+            medal = "•"
+            
+        message += f"{medal} *{username}* • {current_rank}\n`{balance:,} 💵`\n"
+    
+    try:
+        if CLASSEMENT_MESSAGE_ID is None:
+            sent_message = await update.message.reply_text(message)
+            CLASSEMENT_MESSAGE_ID = sent_message.message_id
+            CLASSEMENT_CHAT_ID = update.effective_chat.id
+        else:
+            await context.bot.edit_message_text(
+                chat_id=CLASSEMENT_CHAT_ID,
+                message_id=CLASSEMENT_MESSAGE_ID,
+                text=message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+    except Exception as e:
+        logger.error(f"Erreur mise à jour classement: {e}")
+
 async def rangs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Affiche tous les rangs disponibles"""
     ranks = [
@@ -1652,9 +1754,11 @@ def main():
         )
         
         # Vos handlers existants
+        application.add_handler(CommandHandler("admin", admin_menu))
         application.add_handler(CommandHandler('bank', cmd_bank))
         application.add_handler(CommandHandler("start", cmd_start))
         application.add_handler(CommandHandler("infos", infos))
+        application.add_handler(CommandHandler("classement", classement))
         application.add_handler(CommandHandler("rangs", rangs))
         application.add_handler(CommandHandler("cmds", cmds))
         application.add_handler(CommandHandler("stats", stats))
@@ -1665,6 +1769,12 @@ def main():
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
 
+        # Job de mise à jour du classement toutes les 5 minutes
+        async def update_classement_job(context: ContextTypes.DEFAULT_TYPE):
+            if CLASSEMENT_MESSAGE_ID is not None:
+                await classement(None, context)
+
+        application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
         print("🎲 Blackjack Bot démarré !")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
