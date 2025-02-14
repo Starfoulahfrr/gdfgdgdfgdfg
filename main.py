@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719047"
+TOKEN = "771904"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -62,6 +62,7 @@ class MultiPlayerGame:
         self.game_status = 'waiting'
         self.bet_amount = None  # Pour stocker la mise initiale
         self.created_at = datetime.utcnow()  # Pour tracker le temps de création
+        self.current_hand = 'hand' 
 
     def add_player(self, player_id, bet):
         if len(self.players) < MAX_PLAYERS and player_id not in self.players:
