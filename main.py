@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "7719047607:AAE-tWMiqZLoPGLXy4mIWmgOtWeje9mrF9Y"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -236,26 +236,24 @@ class MultiPlayerGame:
     def determine_winners(self):
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-        
+
         for player_id, player_data in self.players.items():
             for hand_key in ['hand', 'second_hand']:
                 if hand_key in player_data:
                     player_total = self.calculate_hand(player_data[hand_key])
                     result = ""
                     if player_total > 21:
-                        result = 'lose'
+                        result = 'bust'
                     elif player_total == 21:
                         result = 'blackjack'
-                    elif player_data['status'] == 'stand':
-                        if dealer_bust:
-                            result = 'win'
-                        elif player_total > dealer_total:
-                            result = 'win'
-                        elif player_total < dealer_total:
-                            result = 'lose'
-                        else:
-                            result = 'push'
-                    
+                    elif player_total < dealer_total and not dealer_bust:
+                        result = 'lose'
+                    elif player_total > dealer_total or dealer_bust:
+                        result = 'win'
+                    elif player_total == dealer_total:
+                        result = 'push'
+                
+                    player_data[f'{hand_key}_status'] = result
                     if result:
                         db.update_game_result(player_id, player_data['bet'], result)
 
@@ -1020,7 +1018,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         all_blackjack = True
         for player_data in game.players.values():
             if game.calculate_hand(player_data['hand']) == 21:
-                player_data['status'] = 'blackjack'
+                player_data['hand_status'] = 'blackjack'
             else:
                 all_blackjack = False
         if all_blackjack:
@@ -1056,7 +1054,8 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         
         for index, hand in enumerate(hands):
             total = game.calculate_hand(hand)
-            status = player_data['status']
+            status_key = 'hand_status' if index == 0 else 'second_hand_status'
+            status = player_data.get(status_key, 'playing')
             cards = ' '.join(str(card) for card in hand)
             
             # Status et résultats
@@ -1064,11 +1063,9 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             result_text = ""
 
             if game.game_status == 'finished':
-                if total > 21:
-                    status = 'bust'
+                if status == 'bust':
                     result_text = f"-{player_data['bet']}"
-                elif total == 21:
-                    status = 'blackjack'
+                elif status == 'blackjack':
                     winnings = int(player_data['bet'] * 2.5)
                     result_text = f"+{winnings}"
                 elif status == 'win':
@@ -1078,9 +1075,9 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                     result_text = f"-{player_data['bet']}"
                 elif status == 'push':
                     result_text = "±0"
-                elif status == 'stand':
+                if status == 'stand':
                     status_icon = "⏸"
-                elif status == 'bust':
+                if status == 'bust':
                     status_icon = "💥"
 
             game_text += (
@@ -1102,7 +1099,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             total_winnings = 0
             for hand_key in ['hand', 'second_hand']:
                 if hand_key in player_data:
-                    status = player_data['status']
+                    status = player_data.get(f'{hand_key}_status', 'playing')
                     if status == 'blackjack':
                         winnings = int(player_data['bet'] * 2.5)
                         total_winnings += winnings
