@@ -35,7 +35,7 @@ game_logger.addHandler(file_handler)
 
 # Variables globales
 ADMIN_USERS = [5277718388, 5909979625]  # Remplacez par vos IDs admin
-TOKEN = "7719"  # Remplacez par votre token
+TOKEN = "7719047"  # Remplacez par votre token
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 DAILY_AMOUNT = 1000
@@ -335,19 +335,17 @@ class Hand:
         return ' '.join(str(card) for card in self.cards)
         
 class MultiPlayerGame:
-    
-    def __init__(self, host_id: int, host_name: str = None):
+    def __init__(self, host_id: int, host_name: str):
         self.host_id = host_id
         self.host_name = host_name
-        self.players: Dict[int, Dict] = {}
-        self.hands: Dict[int, List[Hand]] = {}  # Pour gérer les splits
-        self.dealer_hand = Hand(0)  # Main du dealer
+        self.players = {}  # {player_id: {'bet': amount}}
+        self.hands = {}    # {player_id: [Hand]}
+        self.hands_order = []  # [(player_id, hand_index)]
+        self.current_hand_idx = 0  # index dans hands_order
+        self.dealer_hand = Hand()
         self.deck = Deck()
-        self.game_status = 'waiting'
-        self.current_player_idx = 0
-        self.current_hand_idx: Dict[int, int] = {}  # Index de la main courante pour chaque joueur
-        self.created_at = datetime.utcnow()
-        self.last_action_time = datetime.utcnow()
+        self.game_status = 'waiting'  # 'waiting', 'playing', 'finished'
+        self.initial_chat_id = None
 
     def add_player(self, player_id: int, bet: int) -> bool:
         """Ajoute un joueur à la partie"""
@@ -387,37 +385,36 @@ class MultiPlayerGame:
         return hand.get_value()
 
     def get_current_player_id(self) -> Optional[int]:
-        """Récupère l'ID du joueur actuel"""
-        player_ids = list(self.players.keys())
-        if not player_ids or self.current_player_idx >= len(player_ids):
-            return None
-        return player_ids[self.current_player_idx]
-
-    def get_current_hand(self) -> Optional[Hand]:
-        """Récupère la main active du joueur actuel"""
-        player_id = self.get_current_player_id()
-        if not player_id:
+        """Obtient l'ID du joueur actuel"""
+        if self.game_status != 'playing':
             return None
         
-        player_hands = self.hands[player_id]
-        hand_idx = self.current_hand_idx[player_id]
-        
-        if hand_idx >= len(player_hands):
+        if not self.current_hand_idx < len(self.hands_order):
             return None
             
-        return player_hands[hand_idx]
+        return self.hands_order[self.current_hand_idx][0]
+
+    def get_current_hand(self) -> Optional[Hand]:
+        """Obtient la main actuelle"""
+        if self.game_status != 'playing':
+            return None
+            
+        if not self.current_hand_idx < len(self.hands_order):
+            return None
+            
+        player_id, hand_idx = self.hands_order[self.current_hand_idx]
+        return self.hands[player_id][hand_idx]
 
     def can_split(self, player_id: int) -> bool:
-        """Vérifie si le joueur peut splitter sa main actuelle"""
         if player_id not in self.hands:
             return False
             
-        hand_idx = self.current_hand_idx[player_id]
-        if hand_idx >= len(self.hands[player_id]):
+        current_hand = self.get_current_hand()
+        if not current_hand or len(current_hand.cards) != 2:
             return False
             
-        current_hand = self.hands[player_id][hand_idx]
-        return current_hand.can_split()
+        # Vérifier que les cartes ont la même valeur
+        return current_hand.cards[0].value == current_hand.cards[1].value
 
     def split_hand(self, player_id: int) -> bool:
         """Sépare la main actuelle du joueur en deux mains"""
@@ -443,25 +440,19 @@ class MultiPlayerGame:
         return True
 
     def next_hand(self) -> bool:
-        """Passe à la main suivante du joueur actuel"""
-        player_id = self.get_current_player_id()
-        if not player_id:
+        """Passe à la main suivante"""
+        if self.game_status != 'playing':
             return False
-
-        self.current_hand_idx[player_id] += 1
-        if self.current_hand_idx[player_id] >= len(self.hands[player_id]):
-            # Si toutes les mains du joueur sont terminées, passer au joueur suivant
-            self.current_hand_idx[player_id] = 0
-            self.current_player_idx += 1
             
-            # Si tous les joueurs ont joué
-            if self.current_player_idx >= len(self.players):
-                self.resolve_dealer()
-                self.determine_winners()
-                self.game_status = 'finished'
-                return True
+        self.current_hand_idx += 1
         
-        self.last_action_time = datetime.utcnow()
+        # Si toutes les mains ont été jouées
+        if self.current_hand_idx >= len(self.hands_order):
+            self.resolve_dealer()
+            self.determine_winners()
+            self.game_status = 'finished'
+            return True
+            
         return False
 
     def check_timeout(self) -> bool:
@@ -511,111 +502,128 @@ class MultiPlayerGame:
             return False
         return (datetime.utcnow() - self.created_at).total_seconds() >= 300
 
-    def start_game(self) -> bool:
+def start_game(self) -> bool:
         """Démarre la partie"""
-        if len(self.players) < 1 or self.game_status != 'waiting':
+        if self.game_status != 'waiting' or len(self.players) < 1:
             return False
             
         self.game_status = 'playing'
-        self.deal_initial_cards()
-        self.current_player_idx = 0
-        self.last_action_time = datetime.utcnow()
+        self.deck.shuffle()
         
-        # Vérifier si tous les joueurs ont un blackjack
-        all_blackjack = True
+        # Distribuer les cartes initiales
         for player_id in self.players:
-            if self.hands[player_id][0].status != 'blackjack':
-                all_blackjack = False
-                break
-        
-        if all_blackjack:
-            self.resolve_dealer()
-            self.determine_winners()
-            self.game_status = 'finished'
+            self.hands[player_id] = [Hand(bet=self.players[player_id]['bet'])]
+            self.hands_order.append((player_id, 0))
             
+            # Donner 2 cartes à chaque joueur
+            for _ in range(2):
+                self.hands[player_id][0].add_card(self.deck.deal())
+        
+        # Donner 2 cartes au croupier
+        for _ in range(2):
+            self.dealer_hand.add_card(self.deck.deal())
+        
+        self.current_hand_idx = 0
         return True
+
+def split_hand(self, player_id: int) -> bool:
+    """Sépare la main actuelle en deux"""
+    if not self.can_split(player_id):
+        return False
+            
+    current_hand = self.get_current_hand()
+    if not current_hand:
+        return False
+            
+    # Créer la nouvelle main
+    new_hand = Hand(bet=current_hand.bet)
+    new_hand.add_card(current_hand.cards.pop())
+        
+    # Ajouter une carte à chaque main
+    current_hand.add_card(self.deck.deal())
+    new_hand.add_card(self.deck.deal())
+        
+    # Ajouter la nouvelle main
+    player_hands = self.hands[player_id]
+    hand_index = player_hands.index(current_hand)
+    player_hands.insert(hand_index + 1, new_hand)
+        
+    # Mettre à jour hands_order
+    insert_idx = self.current_hand_idx + 1
+    self.hands_order.insert(insert_idx, (player_id, hand_index + 1))
+        
+    return True
         
 # Handlers des commandes
 
 async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game: MultiPlayerGame):
-    """Affiche le jeu avec un design élégant et professionnel"""
     chat_id = game.initial_chat_id
     
-    # En-tête élégant
+    # En-tête luxueux
     game_text = (
-        "⚜️ *BLACKJACK VIP* ⚜️\n"
-        "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        "┏━━━━ 𝐂𝐀𝐒𝐈𝐍𝐎 𝐕𝐈𝐏 ━━━━┓\n"
+        "┃     🎰 BLACKJACK     ┃\n"
+        "┗━━━━━━━━━━━━━━━━━━━┛\n\n"
     )
 
-    # Section croupier
+    # Affichage du croupier
     dealer_total = game.calculate_hand(game.dealer_hand)
     if game.game_status == 'finished':
         game_text += (
-            "*CROUPIER*\n"
-            f"└ {game.dealer_hand} • Total : {dealer_total}\n"
-            "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+            "┌─── 𝐂𝐑𝐎𝐔𝐏𝐈𝐄𝐑 ───┐\n"
+            f"│ {game.dealer_hand}\n"
+            f"│ Total : {dealer_total}\n"
+            "└──────────────────┘\n\n"
         )
     else:
         game_text += (
-            "*CROUPIER*\n"
-            f"└ {game.dealer_hand.cards[0]} ?\n"
-            "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+            "┌─── 𝐂𝐑𝐎𝐔𝐏𝐈𝐄𝐑 ───┐\n"
+            f"│ {game.dealer_hand.cards[0]} ⭐\n"
+            "└──────────────────┘\n\n"
         )
 
-    # Gestion des joueurs
+    # Section des joueurs
     current_player_id = game.get_current_player_id()
     total_pot = 0
     
-    # Trier les joueurs (actif en premier)
-    players_info = []
     for player_id, player_data in game.players.items():
+        player = await context.bot.get_chat(player_id)
         total_pot += player_data['bet']
         is_current = (player_id == current_player_id)
-        players_info.append({
-            'id': player_id,
-            'data': player_data,
-            'hands': game.hands.get(player_id, []),
-            'is_current': is_current,
-            'name': await get_player_name(context, player_id)
-        })
-    
-    players_info.sort(key=lambda x: (not x['is_current'], x['id']))
-
-    # Afficher les joueurs
-    for player in players_info:
-        try:
-            if player['is_current']:
-                game_text += "*JOUEUR ACTUEL*\n"
-            
+        
+        # Style spécial pour le joueur actuel
+        if is_current:
             game_text += (
-                f"• {player['name']}\n"
-                f"└ Mise : {player['data']['bet']:,} €\n"
+                "🎮 𝐓𝐎𝐔𝐑 𝐀𝐂𝐓𝐔𝐄𝐋\n"
+                f"┌─── {player.first_name} ───┐\n"
             )
+        else:
+            game_text += f"┌─── {player.first_name} ───┐\n"
 
-            for i, hand in enumerate(player['hands']):
-                total = game.calculate_hand(hand)
-                
-                if len(player['hands']) > 1:
-                    game_text += f"  Main {i+1} :\n"
-                
-                if hand.status == 'playing':
-                    game_text += f"  └ {hand} • Total : {total}\n"
-                else:
-                    result_info = {
-                        'blackjack': (f"+{int(hand.bet * 2.5):,} €", "🎯"),
-                        'win': (f"+{hand.bet * 2:,} €", "✓"),
-                        'bust': (f"-{hand.bet:,} €", "×"),
-                        'lose': (f"-{hand.bet:,} €", "×"),
-                        'push': ("Égalité", "•")
-                    }.get(hand.status, ("", ""))
-                    
-                    game_text += f"  └ {hand} • {total} {result_info[1]} {result_info[0]}\n"
+        # Affichage des mains
+        hands = game.hands.get(player_id, [])
+        for i, hand in enumerate(hands):
+            total = game.calculate_hand(hand)
             
-            game_text += "\n"
-
-        except Exception as e:
-            game_logger.error(f"Error displaying player {player['id']}: {e}")
-            continue
+            if len(hands) > 1:
+                game_text += f"│ Main {i+1}\n"
+            
+            game_text += f"│ {hand}\n│ Total : {total}\n"
+            
+            if hand.status != 'playing':
+                result_info = {
+                    'blackjack': ("BLACKJACK", f"+{int(hand.bet * 2.5):,}€"),
+                    'win': ("GAGNÉ", f"+{hand.bet * 2:,}€"),
+                    'bust': ("BUST", f"-{hand.bet:,}€"),
+                    'lose': ("PERDU", f"-{hand.bet:,}€"),
+                    'push': ("ÉGALITÉ", "±0€")
+                }.get(hand.status)
+                
+                if result_info:
+                    game_text += f"│ {result_info[0]} • {result_info[1]}\n"
+            
+        game_text += f"│ Mise : {player_data['bet']:,}€\n"
+        game_text += "└──────────────────┘\n\n"
 
     # Interface du joueur actuel
     keyboard = None
@@ -623,31 +631,27 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         current_hand = game.get_current_hand()
         if current_hand and current_hand.status == 'playing':
             total = game.calculate_hand(current_hand)
+            bust_chance = calculate_bust_probability(total)
             
-            game_text += (
-                "*ACTIONS DISPONIBLES*\n"
-                f"Main actuelle : {total}\n\n"
-            )
-            
-            # Boutons élégants
             buttons = []
             row1 = [
-                InlineKeyboardButton("CARTE", callback_data="hit"),
-                InlineKeyboardButton("RESTER", callback_data="stand")
+                InlineKeyboardButton(f"🎯 CARTE ({bust_chance}%)", callback_data="hit"),
+                InlineKeyboardButton("⭐ RESTER", callback_data="stand")
             ]
             buttons.append(row1)
             
             if game.can_split(current_player_id):
-                row2 = [InlineKeyboardButton("SÉPARER", callback_data="split")]
+                row2 = [InlineKeyboardButton("✂️ SÉPARER", callback_data="split")]
                 buttons.append(row2)
             
             keyboard = InlineKeyboardMarkup(buttons)
 
-    # Informations de la partie
+    # Pied de page
     game_text += (
-        "▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"*POT TOTAL* : {total_pot:,} €\n"
-        f"*JOUEURS* : {len(game.players)}/40\n"
+        "┌─── 𝐈𝐍𝐅𝐎𝐒 ───┐\n"
+        f"│ Pot : {total_pot:,}€\n"
+        f"│ Joueurs : {len(game.players)}/40\n"
+        "└──────────────┘"
     )
 
     try:
@@ -665,57 +669,6 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             parse_mode=ParseMode.MARKDOWN
         )
         game_messages[chat_id] = new_message.message_id
-
-        # Message de fin élégant
-        if game.game_status == 'finished':
-            await asyncio.sleep(1)
-            
-            final_message = (
-                "⚜️ *RÉSULTATS DE LA PARTIE* ⚜️\n"
-                "▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
-            )
-            
-            for player in players_info:
-                try:
-                    total_won = 0
-                    hand_results = []
-                    
-                    for hand in player['hands']:
-                        if hand.status == 'blackjack':
-                            won = int(hand.bet * 2.5)
-                            total_won += won
-                            hand_results.append(f"Blackjack (+{won:,} €)")
-                        elif hand.status == 'win':
-                            won = hand.bet * 2
-                            total_won += won
-                            hand_results.append(f"Gagné (+{won:,} €)")
-                        elif hand.status in ['lose', 'bust']:
-                            total_won -= hand.bet
-                            hand_results.append(f"Perdu (-{hand.bet:,} €)")
-                        elif hand.status == 'push':
-                            hand_results.append("Égalité")
-                    
-                    final_message += (
-                        f"*{player['name']}*\n"
-                        f"└ {' | '.join(hand_results)}\n"
-                        f"  *Résultat : {'+'if total_won > 0 else ''}{total_won:,} €*\n\n"
-                    )
-                    
-                except Exception as e:
-                    continue
-
-            if chat_id in last_end_game_message:
-                try:
-                    await context.bot.delete_message(chat_id, last_end_game_message[chat_id])
-                except:
-                    pass
-            
-            end_message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=final_message,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            last_end_game_message[chat_id] = end_message.message_id
 
     except Exception as e:
         game_logger.error(f"Error in display_game: {e}")
@@ -1279,6 +1232,7 @@ async def display_waiting_game(update: Update, context: ContextTypes.DEFAULT_TYP
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
+    chat_id = query.message.chat_id
     
     if query.data == "start_game":
         game = None
@@ -1296,6 +1250,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("✅ La partie commence!")
         else:
             await query.answer("❌ Impossible de démarrer!")
+        return
+
+    # Trouver la partie active
+    game = None
+    for g in active_games.values():
+        if hasattr(g, 'initial_chat_id') and g.initial_chat_id == chat_id:
+            game = g
+            break
+    
+    if not game:
+        await query.answer("❌ Aucune partie en cours!")
+        return
+
+    current_player_id = game.get_current_player_id()
+    if user.id != current_player_id:
+        await query.answer("⏳ Ce n'est pas votre tour!")
         return
 
     # Trouver la partie active du joueur
