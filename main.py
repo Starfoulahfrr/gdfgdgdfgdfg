@@ -35,7 +35,7 @@ game_logger.addHandler(file_handler)
 
 # Variables globales
 ADMIN_USERS = [5277718388, 5909979625]  # Remplacez par vos IDs admin
-TOKEN = "7719047"  # Remplacez par votre token
+TOKEN = "77190476"  # Remplacez par votre token
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 DAILY_AMOUNT = 1000
@@ -301,38 +301,38 @@ class Deck:
         return self.cards.pop() if self.cards else None
 
 class Hand:
-    def __init__(self, bet: int):
-        self.cards: List[Card] = []
+    def __init__(self, bet: int = 0):  # On rend le paramètre bet optionnel avec une valeur par défaut
+        self.cards = []
+        self.status = 'playing'  # 'playing', 'stand', 'bust', 'blackjack', 'win', 'lose', 'push'
         self.bet = bet
-        self.status = 'playing'
-        
-    def add_card(self, card: Card):
-        """Ajoute une carte à la main"""
-        self.cards.append(card)
-        
-    def get_value(self) -> int:
-        """Calcule la meilleure valeur de la main"""
-        values = [0]
-        for card in self.cards:
-            card_values = card.get_value()
-            new_values = []
-            for value in values:
-                for card_value in card_values:
-                    new_values.append(value + card_value)
-            values = new_values
-        
-        # Retourne la plus haute valeur ne dépassant pas 21
-        legal_values = [v for v in values if v <= 21]
-        return max(legal_values) if legal_values else min(values)
+        self.timeout = None
 
-    def can_split(self) -> bool:
-        """Vérifie si la main peut être splittée"""
-        return (len(self.cards) == 2 and 
-                self.cards[0].rank == self.cards[1].rank)
-
-    def __str__(self) -> str:
-        """Représentation string de la main"""
+    def __str__(self):
         return ' '.join(str(card) for card in self.cards)
+
+    def add_card(self, card):
+        self.cards.append(card)
+
+    def get_value(self) -> int:
+        value = 0
+        aces = 0
+        
+        for card in self.cards:
+            if card.value == 1:  # As
+                aces += 1
+            elif card.value > 10:  # Valet, Dame, Roi
+                value += 10
+            else:
+                value += card.value
+        
+        # Gérer les As (1 ou 11)
+        for _ in range(aces):
+            if value + 11 <= 21:
+                value += 11
+            else:
+                value += 1
+                
+        return value
         
 class MultiPlayerGame:
     def __init__(self, host_id: int, host_name: str):
@@ -341,48 +341,55 @@ class MultiPlayerGame:
         self.players = {}  # {player_id: {'bet': amount}}
         self.hands = {}    # {player_id: [Hand]}
         self.hands_order = []  # [(player_id, hand_index)]
-        self.current_hand_idx = 0  # index dans hands_order
-        self.dealer_hand = Hand()
+        self.current_hand_idx = 0  # Index actuel dans hands_order
+        self.dealer_hand = Hand()  # Main du dealer
         self.deck = Deck()
         self.game_status = 'waiting'  # 'waiting', 'playing', 'finished'
         self.initial_chat_id = None
 
-    def add_player(self, player_id: int, bet: int) -> bool:
-        """Ajoute un joueur à la partie"""
-        if len(self.players) >= MAX_PLAYERS or player_id in self.players:
-            return False
-
-        self.players[player_id] = {
-            'bet': bet,
-            'status': 'playing'
-        }
-        self.hands[player_id] = [Hand(bet)]
-        self.current_hand_idx[player_id] = 0
-        return True
-
-    def deal_initial_cards(self):
-        """Distribution initiale des cartes"""
-        # Distribuer deux cartes à chaque joueur
-        for player_id in self.players:
-            player_hand = self.hands[player_id][0]
-            player_hand.add_card(self.deck.deal())
-            player_hand.add_card(self.deck.deal())
-            
-            # Vérifier le blackjack initial
-            if player_hand.get_value() == 21:
-                player_hand.status = 'blackjack'
-                self.players[player_id]['status'] = 'blackjack'
-
-        # Distribuer au croupier
-        self.dealer_hand.add_card(self.deck.deal())
-        self.dealer_hand.add_card(self.deck.deal())
-        self.last_action_time = datetime.utcnow()
-
     def calculate_hand(self, hand: Hand) -> int:
         """Calcule la valeur d'une main"""
-        if not hand:
-            return 0
-        return hand.get_value()
+        return hand.get_value() if hand else 0
+
+    def add_player(self, player_id: int, bet: int) -> bool:
+        """Ajoute un joueur à la partie"""
+        if self.game_status != 'waiting' or player_id in self.players:
+            return False
+        
+        self.players[player_id] = {'bet': bet}
+        return True
+
+    def remove_player(self, player_id: int) -> bool:
+        """Retire un joueur de la partie"""
+        if self.game_status != 'waiting' or player_id not in self.players:
+            return False
+        
+        del self.players[player_id]
+        return True
+
+    def start_game(self) -> bool:
+        """Démarre la partie"""
+        if self.game_status != 'waiting' or len(self.players) < 1:
+            return False
+            
+        self.game_status = 'playing'
+        self.deck.shuffle()
+        
+        # Distribution initiale
+        for player_id in self.players:
+            self.hands[player_id] = [Hand(bet=self.players[player_id]['bet'])]
+            self.hands_order.append((player_id, 0))
+            
+            # 2 cartes par joueur
+            for _ in range(2):
+                self.hands[player_id][0].add_card(self.deck.deal())
+        
+        # 2 cartes pour le dealer
+        for _ in range(2):
+            self.dealer_hand.add_card(self.deck.deal())
+        
+        self.current_hand_idx = 0
+        return True
 
     def get_current_player_id(self) -> Optional[int]:
         """Obtient l'ID du joueur actuel"""
@@ -405,40 +412,6 @@ class MultiPlayerGame:
         player_id, hand_idx = self.hands_order[self.current_hand_idx]
         return self.hands[player_id][hand_idx]
 
-    def can_split(self, player_id: int) -> bool:
-        if player_id not in self.hands:
-            return False
-            
-        current_hand = self.get_current_hand()
-        if not current_hand or len(current_hand.cards) != 2:
-            return False
-            
-        # Vérifier que les cartes ont la même valeur
-        return current_hand.cards[0].value == current_hand.cards[1].value
-
-    def split_hand(self, player_id: int) -> bool:
-        """Sépare la main actuelle du joueur en deux mains"""
-        if not self.can_split(player_id):
-            return False
-
-        hand_idx = self.current_hand_idx[player_id]
-        current_hand = self.hands[player_id][hand_idx]
-        
-        # Créer deux nouvelles mains
-        new_hand1 = Hand(current_hand.bet)
-        new_hand2 = Hand(current_hand.bet)
-        
-        # Distribuer les cartes
-        new_hand1.add_card(current_hand.cards[0])
-        new_hand2.add_card(current_hand.cards[1])
-        new_hand1.add_card(self.deck.deal())
-        new_hand2.add_card(self.deck.deal())
-        
-        # Remplacer l'ancienne main par les nouvelles
-        self.hands[player_id][hand_idx:hand_idx+1] = [new_hand1, new_hand2]
-        
-        return True
-
     def next_hand(self) -> bool:
         """Passe à la main suivante"""
         if self.game_status != 'playing':
@@ -455,52 +428,105 @@ class MultiPlayerGame:
             
         return False
 
-    def check_timeout(self) -> bool:
-        """Vérifie si le joueur actuel a dépassé le temps imparti"""
-        if self.game_status != 'playing':
+    def hit(self, player_id: int) -> bool:
+        """Tire une carte pour le joueur actuel"""
+        if not self.is_player_turn(player_id):
             return False
-        return (datetime.utcnow() - self.last_action_time).total_seconds() > 30
+            
+        current_hand = self.get_current_hand()
+        if not current_hand or current_hand.status != 'playing':
+            return False
+            
+        current_hand.add_card(self.deck.deal())
+        
+        # Vérifier si bust
+        if current_hand.get_value() > 21:
+            current_hand.status = 'bust'
+            return self.next_hand()
+            
+        return True
+
+    def stand(self, player_id: int) -> bool:
+        """Le joueur reste sur sa main actuelle"""
+        if not self.is_player_turn(player_id):
+            return False
+            
+        current_hand = self.get_current_hand()
+        if not current_hand or current_hand.status != 'playing':
+            return False
+            
+        current_hand.status = 'stand'
+        return self.next_hand()
+
+    def can_split(self, player_id: int) -> bool:
+        """Vérifie si le joueur peut splitter sa main"""
+        if not self.is_player_turn(player_id):
+            return False
+            
+        current_hand = self.get_current_hand()
+        if not current_hand or len(current_hand.cards) != 2:
+            return False
+            
+        return current_hand.cards[0].value == current_hand.cards[1].value
+
+    def split_hand(self, player_id: int) -> bool:
+        """Splitte la main actuelle en deux"""
+        if not self.can_split(player_id):
+            return False
+            
+        current_hand = self.get_current_hand()
+        bet = current_hand.bet
+        
+        # Créer nouvelle main
+        new_hand = Hand(bet=bet)
+        new_hand.add_card(current_hand.cards.pop())
+        
+        # Ajouter cartes
+        current_hand.add_card(self.deck.deal())
+        new_hand.add_card(self.deck.deal())
+        
+        # Mettre à jour les mains
+        player_hands = self.hands[player_id]
+        hand_index = player_hands.index(current_hand)
+        player_hands.insert(hand_index + 1, new_hand)
+        
+        # Mettre à jour l'ordre
+        self.hands_order.insert(self.current_hand_idx + 1, (player_id, hand_index + 1))
+        
+        return True
+
+    def is_player_turn(self, player_id: int) -> bool:
+        """Vérifie si c'est le tour du joueur"""
+        return (self.game_status == 'playing' and 
+                self.get_current_player_id() == player_id)
 
     def resolve_dealer(self):
-        """Tour du croupier"""
+        """Résout le jeu du dealer"""
         while self.dealer_hand.get_value() < 17:
             self.dealer_hand.add_card(self.deck.deal())
 
     def determine_winners(self):
-        """Détermine les gagnants et met à jour les soldes"""
+        """Détermine les gagnants de la partie"""
         dealer_value = self.dealer_hand.get_value()
         dealer_bust = dealer_value > 21
-        
+
         for player_id, hands in self.hands.items():
             for hand in hands:
-                hand_value = hand.get_value()
-                
                 if hand.status == 'bust':
-                    db.update_game_result(player_id, hand.bet, 'lose')
                     continue
                     
-                if hand.status == 'blackjack':
-                    db.update_game_result(player_id, hand.bet, 'blackjack')
-                    continue
+                hand_value = hand.get_value()
                 
-                if dealer_bust:
+                if hand_value == 21 and len(hand.cards) == 2:
+                    hand.status = 'blackjack'
+                elif dealer_bust:
                     hand.status = 'win'
-                    db.update_game_result(player_id, hand.bet, 'win')
                 elif hand_value > dealer_value:
                     hand.status = 'win'
-                    db.update_game_result(player_id, hand.bet, 'win')
                 elif hand_value < dealer_value:
                     hand.status = 'lose'
-                    db.update_game_result(player_id, hand.bet, 'lose')
                 else:
                     hand.status = 'push'
-                    db.update_game_result(player_id, hand.bet, 'push')
-
-    def is_expired(self) -> bool:
-        """Vérifie si la partie en attente a expiré"""
-        if self.game_status != 'waiting':
-            return False
-        return (datetime.utcnow() - self.created_at).total_seconds() >= 300
 
 def start_game(self) -> bool:
         """Démarre la partie"""
