@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "771"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -265,10 +265,10 @@ class MultiPlayerGame:
     def determine_winners(self):
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-    
+
         for player_id, player_data in self.players.items():
             # Première main
-            if player_data['status'] != 'bust':
+            if player_data['status'] not in ['bust', 'blackjack']:  # Ajout de 'blackjack'
                 player_total = self.calculate_hand(player_data['hand'])
                 if dealer_bust:
                     player_data['status'] = 'win'
@@ -278,18 +278,23 @@ class MultiPlayerGame:
                     player_data['status'] = 'lose'
                 else:
                     player_data['status'] = 'push'
-        
+            elif player_data['status'] == 'bust':  # Ajout de cette condition
+                player_data['status'] = 'lose'
+
             # Seconde main si elle existe
-            if 'second_hand' in player_data and player_data['second_hand_status'] != 'bust':
-                second_total = self.calculate_hand(player_data['second_hand'])
-                if dealer_bust:
-                    player_data['second_hand_status'] = 'win'
-                elif second_total > dealer_total:
-                    player_data['second_hand_status'] = 'win'
-                elif second_total < dealer_total:
+            if 'second_hand' in player_data:
+                if player_data.get('second_hand_status') != 'bust':
+                    second_total = self.calculate_hand(player_data['second_hand'])
+                    if dealer_bust:
+                        player_data['second_hand_status'] = 'win'
+                    elif second_total > dealer_total:
+                        player_data['second_hand_status'] = 'win'
+                    elif second_total < dealer_total:
+                        player_data['second_hand_status'] = 'lose'
+                    else:
+                        player_data['second_hand_status'] = 'push'
+                else:  # Ajout de cette condition
                     player_data['second_hand_status'] = 'lose'
-                else:
-                    player_data['second_hand_status'] = 'push'
 
 
 class DatabaseManager:
@@ -1406,7 +1411,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if current_hand == 'hand' and 'second_hand' in player_data:
                     # Si blackjack sur la première main, passer à la seconde
                     player_data['current_hand'] = 'second_hand'
+                    player_data['second_hand_status'] = 'playing'  # Ajout de cette ligne
                     await query.answer("🌟 Blackjack! À la seconde main!")
+                    await display_game(update, context, game)
+                    return  # Ajout de cette ligne pour empêcher le next_player()
                 else:
                     game_ended = game.next_player()
                     await query.answer("🌟 Blackjack!")
