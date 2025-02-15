@@ -7,8 +7,6 @@ from typing import Dict, List, Optional, Set
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, Defaults
-from utils import db, is_admin, DatabaseManager
-from dice import register_dice_handlers, dice_button_handler, active_games
 
 # Variables globales
 active_games = {}
@@ -233,51 +231,30 @@ class MultiPlayerGame:
             self.dealer_hand.append(self.deck.deal())
             
     def determine_winners(self):
-        """Tour du croupier"""
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-
+        
         for player_id, player_data in self.players.items():
-            # Traiter la main principale
             if player_data['status'] == 'bust':
-                player_data['first_status'] = 'bust'  # Stocker le statut explicitement
                 db.update_game_result(player_id, player_data['bet'], 'lose')
+                continue
             elif player_data['status'] == 'blackjack':
-                player_data['first_status'] = 'blackjack'  # Stocker le statut explicitement
                 db.update_game_result(player_id, player_data['bet'], 'blackjack')
+                continue
             elif player_data['status'] == 'stand':
                 player_total = self.calculate_hand(player_data['hand'])
-            
+                
                 if dealer_bust:
-                    player_data['first_status'] = 'win'
+                    player_data['status'] = 'win'
                     db.update_game_result(player_id, player_data['bet'], 'win')
                 elif player_total > dealer_total:
-                    player_data['first_status'] = 'win'
+                    player_data['status'] = 'win'
                     db.update_game_result(player_id, player_data['bet'], 'win')
                 elif player_total < dealer_total:
-                    player_data['first_status'] = 'lose'
+                    player_data['status'] = 'lose'
                     db.update_game_result(player_id, player_data['bet'], 'lose')
                 else:
-                    player_data['first_status'] = 'push'
-                    db.update_game_result(player_id, player_data['bet'], 'push')
-        
-            # Traiter la seconde main si elle existe
-            if 'second_hand' in player_data:
-                second_total = self.calculate_hand(player_data['second_hand'])
-                if second_total > 21:
-                    player_data['second_status'] = 'bust'
-                    db.update_game_result(player_id, player_data['bet'], 'lose')
-                elif dealer_bust:
-                    player_data['second_status'] = 'win'
-                    db.update_game_result(player_id, player_data['bet'], 'win')
-                elif second_total > dealer_total:
-                    player_data['second_status'] = 'win'
-                    db.update_game_result(player_id, player_data['bet'], 'win')
-                elif second_total < dealer_total:
-                    player_data['second_status'] = 'lose'
-                    db.update_game_result(player_id, player_data['bet'], 'lose')
-                else:
-                    player_data['second_status'] = 'push'
+                    player_data['status'] = 'push'
                     db.update_game_result(player_id, player_data['bet'], 'push')
 
 
@@ -1078,71 +1055,65 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         
         for index, hand in enumerate(hands):
             total = game.calculate_hand(hand)
-            # Utiliser le bon statut selon la main
-            if index == 0:
-                status = player_data.get('first_status', player_data['status'])
-            else:
-                status = player_data.get('second_status', 'playing')
+            status = player_data['status']
+            cards = ' '.join(str(card) for card in hand)
             
+            # Status et résultats
+            status_icon = "🎮"  # Défaut
             result_text = ""
-            status_icon = get_status_emoji(status)
 
-            if status == 'blackjack':
-                winnings = int(player_data['bet'] * 2.5)
-                result_text = f"+{winnings}"
-            elif status == 'win':
-                winnings = player_data['bet'] * 2
-                result_text = f"+{winnings}"
-            elif status == 'lose':
-                result_text = f"-{player_data['bet']}"
-            elif status == 'push':
-                result_text = "±0"
+            if game.game_status == 'finished':
+                if status == 'blackjack':
+                    winnings = int(player_data['bet'] * 2.5)
+                    status_icon = "🏆"
+                    result_text = f"+{winnings}"
+                elif status == 'win':
+                    winnings = player_data['bet'] * 2
+                    status_icon = "💰"
+                    result_text = f"+{winnings}"
+                elif status == 'lose':
+                    status_icon = "💀"
+                    result_text = f"-{player_data['bet']}"
+                elif status == 'push':
+                    status_icon = "🤝"
+                    result_text = "±0"
+                elif status == 'bust':
+                    status_icon = "💥"
+                    result_text = f"-{player_data['bet']}"
+            elif status == 'stand':
+                status_icon = "⏸"
             elif status == 'bust':
-                result_text = f"-{player_data['bet']}"
+                status_icon = "💥"
 
             game_text += (
-                f"{status_icon} *{user.first_name}* │ {' '.join(str(card) for card in hand)}\n"
+                f"{status_icon} *{user.first_name}* │ {cards}\n"
                 f"├ Total: {total}\n"
                 f"├ Mise: {player_data['bet']} 💵"
             )
             if index == 1:
                 game_text += " (Seconde main)"
-            if result_text and game.game_status == 'finished':
+            if result_text:
                 game_text += f" │ {result_text}"
             game_text += "\n──────────────\n\n"
 
-    # Résultats finaux
+    # Status actuel
     if game.game_status == 'finished':
         game_text += "*RÉSULTATS*\n"
         for player_id, player_data in game.players.items():
             user = await context.bot.get_chat(player_id)
-            first_status = player_data.get('first_status', player_data['status'])
-            second_status = player_data.get('second_status', None)
-            total_result = 0
-
-            # Calculer le résultat de la première main
-            if first_status == 'blackjack':
-                total_result += int(player_data['bet'] * 2.5)
-            elif first_status == 'win':
-                total_result += player_data['bet'] * 2
-            elif first_status in ['lose', 'bust']:
-                total_result -= player_data['bet']
-
-            # Calculer le résultat de la seconde main
-            if second_status:
-                if second_status == 'win':
-                    total_result += player_data['bet'] * 2
-                elif second_status in ['lose', 'bust']:
-                    total_result -= player_data['bet']
-
-            # Afficher le résultat total
-            if total_result > 0:
-                game_text += f"💰 {user.first_name}: *+{total_result}*\n"
-            elif total_result < 0:
-                game_text += f"💸 {user.first_name}: *{total_result}*\n"
-            else:
-                game_text += f"🤝 {user.first_name}: *±0*\n"
-
+            status = player_data['status']
+            result_line = ""
+            if status == 'blackjack':
+                winnings = int(player_data['bet'] * 2.5)
+                result_line = f"👑 {user.first_name}: *+{winnings}*"
+            elif status == 'win':
+                winnings = player_data['bet'] * 2
+                result_line = f"💰 {user.first_name}: *+{winnings}*"
+            elif status in ['lose', 'bust']:
+                result_line = f"💸 {user.first_name}: *-{player_data['bet']}*"
+            elif status == 'push':
+                result_line = f"🤝 {user.first_name}: *±0*"
+            game_text += f"{result_line}\n"
         game_text += "\n🎮 */bj [mise]* pour rejouer"
     elif current_player_id := game.get_current_player_id():
         player_name = (await context.bot.get_chat(current_player_id)).first_name
@@ -1168,14 +1139,15 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             ])
         
         keyboard = InlineKeyboardMarkup(buttons)
-
     try:
         if game.game_status == 'finished':
+            # Si c'est un callback_query, supprime le message avec les boutons
             if update.callback_query:
                 try:
                     await update.callback_query.message.delete()
                 except Exception:
                     pass
+            # Si ce n'est pas un callback_query mais qu'on a l'ID du message dans game_messages
             elif chat_id in game_messages:
                 try:
                     await context.bot.delete_message(
@@ -1185,12 +1157,14 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 except Exception:
                     pass
 
+            # Envoie le message final avec les résultats
             message = await context.bot.send_message(
                 chat_id=chat_id,
                 text=game_text,
                 parse_mode=ParseMode.MARKDOWN
             )
 
+            # Nettoie les références
             host_id = game.host_id
             if host_id in active_games:
                 del active_games[host_id]
@@ -1199,6 +1173,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             if chat_id in game_messages:
                 del game_messages[chat_id]
 
+            # Envoie le message "partie terminée"
             end_message = await context.bot.send_message(
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
@@ -1208,6 +1183,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             )
             last_end_game_message[chat_id] = end_message.message_id
         else:
+            # Le reste de votre code pour les parties en cours reste identique
             if update.callback_query:
                 await update.callback_query.message.edit_text(
                     text=game_text,
@@ -1255,17 +1231,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     chat_id = update.effective_chat.id
-
-    # Gérer les callbacks du jeu de dés
-    if query.data in ["join", "cancel"]:
-        if chat_id not in active_games:
-            await query.answer()
-            await query.message.edit_text("❌ Ce pari n'existe plus!")
-            return
-
-        game = active_games[chat_id]
-        await dice_button_handler(update, context)
-        return
 
     if query.data.startswith("admin_"):
         if not is_admin(user.id):
@@ -1334,35 +1299,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_card = game.deck.deal()
             player_data[current_hand].append(new_card)
             total = game.calculate_hand(player_data[current_hand])
-
+    
             if total > 21:
-                if current_hand == 'hand' and 'second_hand' in player_data:
-                    # Si c'est la première main qui bust et qu'il y a une seconde main
-                    player_data['first_status'] = 'bust'  # Marquer la première main comme bust
-                    player_data['current_hand'] = 'second_hand'  # Passer à la seconde main
-                    player_data['status'] = 'playing'  # Maintenir le statut de jeu
-                    await query.answer("💥 Première main bust! Passons à la seconde main.")
-                else:
-                    # Si c'est la seconde main ou s'il n'y a pas de seconde main
-                    if current_hand == 'second_hand':
-                        player_data['second_status'] = 'bust'
-                    player_data['status'] = 'bust'
-                    game_ended = game.next_player()
-                    await query.answer("💥 Vous avez dépassé 21!")
+                player_data['status'] = 'bust'
+                game_ended = game.next_player()
+                await query.answer("💥 Vous avez dépassé 21!")
             elif total == 21:
-                if current_hand == 'hand' and 'second_hand' in player_data:
-                    # Si c'est la première main qui fait 21 et qu'il y a une seconde main
-                    player_data['first_status'] = 'blackjack'
-                    player_data['current_hand'] = 'second_hand'
-                    player_data['status'] = 'playing'
-                    await query.answer("🌟 Blackjack sur la première main! Passons à la seconde.")
-                else:
-                    # Si c'est la seconde main ou s'il n'y a pas de seconde main
-                    if current_hand == 'second_hand':
-                        player_data['second_status'] = 'blackjack'
-                    player_data['status'] = 'blackjack'
-                    game_ended = game.next_player()
-                    await query.answer("🌟 Blackjack!")
+                player_data['status'] = 'blackjack'
+                game_ended = game.next_player()
+                await query.answer("🌟 Blackjack!")
             else:
                 await query.answer(f"🎯 Total: {total}")
         
@@ -1370,18 +1315,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'current_hand' not in player_data:
                 player_data['current_hand'] = 'hand'
             current_hand = player_data['current_hand']
-    
             if current_hand == 'hand' and 'second_hand' in player_data:
                 player_data['current_hand'] = 'second_hand'
-                player_data['first_status'] = 'stand'  # Stocker le statut de la première main séparément
-                player_data['status'] = 'playing'  # Garder le statut principal comme 'playing'
+                player_data['status'] = 'playing'
                 await query.answer("⏹ Vous restez sur la première main, à la seconde")
             else:
-                if current_hand == 'second_hand':
-                    player_data['second_status'] = 'stand'
-                    player_data['status'] = 'stand'  # Maintenant on peut mettre stand car c'est fini
-                else:
-                    player_data['status'] = 'stand'
+                player_data['status'] = 'stand'
                 game_ended = game.next_player()
                 await query.answer("⏹ Vous restez")
         
@@ -1838,7 +1777,6 @@ def main():
         application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
         print("🎲 Blackjack Bot démarré !")
-        register_dice_handlers(application)
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
