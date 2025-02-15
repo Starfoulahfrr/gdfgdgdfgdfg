@@ -7,13 +7,14 @@ from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 from utils import db, is_admin
 
+# Configuration du logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Un dictionnaire séparé pour les jeux de dés uniquement
+# Stockage des paris en cours {chat_id: {message_id: game}}
 dice_games = {}
 
 class DiceGame:
@@ -27,6 +28,16 @@ class DiceGame:
 async def dice_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
+
+    # Vérifier si l'utilisateur a déjà un pari en cours comme hôte
+    for games in dice_games.values():
+        for game in games.values():
+            if game.host_id == user.id and game.status == 'waiting':
+                await update.message.reply_text(
+                    "❌ Vous avez déjà un pari en cours!\n"
+                    "Attendez qu'il soit terminé ou annulez-le."
+                )
+                return
 
     try:
         bet_amount = int(context.args[0])
@@ -61,8 +72,8 @@ async def dice_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [[
-        InlineKeyboardButton("✅ Participer", callback_data=f"dice_join_{bet_amount}"),
-        InlineKeyboardButton("❌ Annuler", callback_data="dice_cancel")
+        InlineKeyboardButton("✅ Participer", callback_data=f"join"),
+        InlineKeyboardButton("❌ Annuler", callback_data="cancel")
     ]]
 
     sent_message = await context.bot.send_message(
@@ -75,11 +86,14 @@ async def dice_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in dice_games:
         dice_games[chat_id] = {}
 
-    dice_games[chat_id][sent_message.message_id] = DiceGame(user.id, user.first_name, bet_amount, sent_message.message_id)
+    dice_games[chat_id][sent_message.message_id] = DiceGame(
+        user.id, user.first_name, bet_amount, sent_message.message_id
+    )
+
     asyncio.create_task(check_game_expiration(context, chat_id, sent_message.message_id))
 
 async def check_game_expiration(context, chat_id, message_id):
-    await asyncio.sleep(300)
+    await asyncio.sleep(300)  # 5 minutes
     if chat_id in dice_games and message_id in dice_games[chat_id]:
         game = dice_games[chat_id][message_id]
         if game.status == 'waiting':
@@ -102,15 +116,20 @@ async def dice_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = query.message.chat_id
     message_id = query.message.message_id
 
+    print(f"DEBUG - callback data: {query.data}")
+    print(f"DEBUG - chat_id: {chat_id}")
+    print(f"DEBUG - message_id: {message_id}")
+    print(f"DEBUG - dice_games: {dice_games}")
+
     await query.answer()
 
-    if not chat_id in dice_games or not message_id in dice_games[chat_id]:
+    if chat_id not in dice_games or message_id not in dice_games[chat_id]:
         await query.message.edit_text("❌ Ce pari n'existe plus!")
         return
 
     game = dice_games[chat_id][message_id]
 
-    if query.data.startswith("dice_join_"):
+    if query.data == "join":
         if game.status != 'waiting':
             await query.message.edit_text("❌ Ce pari n'est plus disponible!")
             return
@@ -140,7 +159,7 @@ async def dice_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             loser_name = game.host_name
 
         # Mettre à jour les soldes
-        db.update_game_result(winner_id, game.bet_amount, 'win')
+        db.update_game_result(winner_id, game.bet_amount, 'dice_win')
         db.update_game_result(loser_id, game.bet_amount, 'lose')
 
         # Obtenir les nouveaux soldes
@@ -149,7 +168,7 @@ async def dice_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         game.status = 'finished'
 
-        await query.message.edit_text(
+        result_message = (
             f"🎲 *RÉSULTAT DU PARI* 🎲\n"
             f"━━━━━━━━━━━━━━━\n"
             f"{'🦅 PILE!' if is_pile else '👾 FACE!'}\n\n"
@@ -159,15 +178,20 @@ async def dice_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"*PERDANT* 💀\n"
             f"{loser_name} (-{game.bet_amount} coins)\n"
             f"💰 Nouveau solde: {loser_balance} coins\n\n"
-            f"La chance tournera peut-être la prochaine fois!",
+            f"La chance tournera peut-être la prochaine fois!"
+        )
+
+        await query.message.edit_text(
+            text=result_message,
             parse_mode=ParseMode.MARKDOWN
         )
 
+        # Nettoyer le jeu terminé
         del dice_games[chat_id][message_id]
         if not dice_games[chat_id]:
             del dice_games[chat_id]
 
-    elif query.data == "dice_cancel":
+    elif query.data == "cancel":
         if user.id == game.host_id or is_admin(user.id):
             del dice_games[chat_id][message_id]
             if not dice_games[chat_id]:
@@ -179,5 +203,4 @@ async def dice_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 def register_dice_handlers(application):
     """Enregistre les handlers pour le jeu de dés"""
     application.add_handler(CommandHandler("dice", dice_start))
-    # Ajouter un préfixe 'dice_' aux callback_data pour éviter les conflits
-    application.add_handler(CallbackQueryHandler(dice_button_handler, pattern="^dice_"))
+    application.add_handler(CallbackQueryHandler(dice_button_handler, pattern="^(join|cancel)$"))
