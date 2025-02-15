@@ -8,14 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, Defaults
 
-# Variables globales
-active_games = {}
-waiting_games = set()
-game_messages = {}
-CLASSEMENT_MESSAGE_ID = None
-CLASSEMENT_CHAT_ID = None
-last_game_message = {}  # {chat_id: message_id}
-last_end_game_message = {}  # {chat_id: message_id}
+
 
 # Configuration du logging
 logging.basicConfig(
@@ -25,7 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = " :AAE- "
+TOKEN = " : - "
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -572,6 +565,15 @@ class DatabaseManager:
         """Ferme la connexion à la base de données"""
         self.conn.close()
 
+# Variables globales
+active_games = {}
+active_dice_games: Dict[int, Dict[int, DiceGame]] = {}  # {chat_id: {message_id: game}}
+waiting_games = set()
+game_messages = {}
+CLASSEMENT_MESSAGE_ID = None
+CLASSEMENT_CHAT_ID = None
+last_game_message = {}  # {chat_id: message_id}
+last_end_game_message = {}  # {chat_id: message_id}
 
 db = DatabaseManager()
 active_games: Dict[int, MultiPlayerGame] = {}  # {host_id: game}
@@ -1261,14 +1263,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat_id
     message_id = query.message.message_id
 
-    if chat_id not in active_games or message_id not in active_games[chat_id]:
-        await query.answer("❌ Cette partie n'existe plus!")
-        return
-
-    game = active_games[chat_id][message_id]
-
     # Gestion des dés
-    if hasattr(game, 'game_type') and game.game_type == 'dice':
+    if query.data.startswith("join_dice") or query.data.startswith("cancel_dice"):
+        if chat_id not in active_dice_games or message_id not in active_dice_games[chat_id]:
+            await query.answer("❌ Cette partie n'existe plus!")
+            return
+
+        game = active_dice_games[chat_id][message_id]
+
         if query.data == "join_dice":
             if user.id == game.host_id:
                 await query.answer("❌ Vous ne pouvez pas rejoindre votre propre pari!")
@@ -1298,8 +1300,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 loser_name = game.host_name
 
             # Mettre à jour les résultats via le DatabaseManager
-            db.update_game_result(winner_id, game.bet_amount, 'win')  # Le gagnant gagne
-            db.update_game_result(loser_id, game.bet_amount, 'lose')  # Le perdant perd
+            db.update_game_result(winner_id, game.bet_amount, 'win')
+            db.update_game_result(loser_id, game.bet_amount, 'lose')
 
             # Obtenir les nouveaux soldes
             winner_balance = db.get_balance(winner_id)
@@ -1318,17 +1320,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
 
-            del active_games[chat_id][message_id]
-            if not active_games[chat_id]:
-                del active_games[chat_id]
+            del active_dice_games[chat_id][message_id]
+            if not active_dice_games[chat_id]:
+                del active_dice_games[chat_id]
             await query.answer()
             return
 
         elif query.data == "cancel_dice":
             if user.id == game.host_id:
-                del active_games[chat_id][message_id]
-                if not active_games[chat_id]:
-                    del active_games[chat_id]
+                del active_dice_games[chat_id][message_id]
+                if not active_dice_games[chat_id]:
+                    del active_dice_games[chat_id]
                 await query.message.edit_text("❌ Pari annulé", parse_mode=ParseMode.MARKDOWN)
             else:
                 await query.answer("❌ Seul le créateur peut annuler le pari!")
@@ -1491,6 +1493,13 @@ async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
 
+    # Vérifie si l'utilisateur a déjà une partie de dés en cours
+    if chat_id in active_dice_games:
+        for game in active_dice_games[chat_id].values():
+            if game.host_id == user.id:
+                await update.message.reply_text("❌ Vous avez déjà un pari en cours!")
+                return
+
     # Vérifie si l'utilisateur existe, sinon l'enregistre
     if not db.user_exists(user.id):
         db.register_user(user.id, user.first_name)
@@ -1534,9 +1543,9 @@ async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN
     )
 
-    if chat_id not in active_games:
-        active_games[chat_id] = {}
-    active_games[chat_id][message.message_id] = DiceGame(user.id, user.first_name, bet_amount)
+    if chat_id not in active_dice_games:
+        active_dice_games[chat_id] = {}
+    active_dice_games[chat_id][message.message_id] = DiceGame(user.id, user.first_name, bet_amount)
 
 async def error_handler(update: Update, context):
     print(f"An error occurred: {context.error}")  # Debug log
