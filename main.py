@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Set
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, Defaults
+from utils import db, is_admin, DatabaseManager
+from dice import register_dice_handlers, dice_button_handler, active_games
 
 # Variables globales
 active_games = {}
@@ -25,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771904"
+TOKEN = "77190"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1254,6 +1256,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     chat_id = update.effective_chat.id
 
+    # Gérer les callbacks du jeu de dés
+    if query.data in ["join", "cancel"]:
+        if chat_id not in active_games:
+            await query.answer()
+            await query.message.edit_text("❌ Ce pari n'existe plus!")
+            return
+
+        game = active_games[chat_id]
+        await dice_button_handler(update, context)
+        return
+
     if query.data.startswith("admin_"):
         if not is_admin(user.id):
             await query.answer("❌ Action réservée aux administrateurs!", show_alert=True)
@@ -1825,6 +1838,7 @@ def main():
         application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
         print("🎲 Blackjack Bot démarré !")
+        register_dice_handlers(application)
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
