@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "7719047"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -107,6 +107,25 @@ class MultiPlayerGame:
             }
             if player_id == self.host_id:  # Si c'est l'hôte, on stocke la mise initiale
                 self.bet_amount = bet
+            return True
+        return False
+
+    def can_split(self, player_id):
+        """Vérifie si le joueur peut splitter sa main"""
+        player_data = self.players.get(player_id)
+        if player_data and len(player_data['hand']) == 2:
+            return player_data['hand'][0].rank == player_data['hand'][1].rank
+        return False
+
+    def split_hand(self, player_id):
+        """Sépare la main du joueur en deux"""
+        player_data = self.players.get(player_id)
+        if player_data and self.can_split(player_id):
+            # Création de deux nouvelles mains
+            card1, card2 = player_data['hand']
+            player_data['hand'] = [card1, self.deck.deal()]
+            new_hand = [card2, self.deck.deal()]
+            self.players[player_id]['split_hand'] = new_hand
             return True
         return False
 
@@ -210,6 +229,7 @@ class MultiPlayerGame:
         # Distribuer au croupier
         self.dealer_hand = [self.deck.deal(), self.deck.deal()]
         self.last_action_time = datetime.utcnow() 
+
     def resolve_dealer(self):
         """Tour du croupier"""
         while self.calculate_hand(self.dealer_hand) < 17:
@@ -998,7 +1018,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         update.callback_query.message.message_thread_id if update.callback_query
         else (update.message.message_thread_id if update.message else None)
     )
-    
+
     # Vérifier et gérer les blackjacks initiaux si nécessaire
     if game.game_status == 'playing':
         all_blackjack = True
@@ -1105,12 +1125,16 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
     # Boutons de jeu
     keyboard = None
     if game.game_status == 'playing' and game.get_current_player_id():
-        keyboard = InlineKeyboardMarkup([
+        buttons = [
             [
                 InlineKeyboardButton("🎯 CARTE", callback_data="hit"),
                 InlineKeyboardButton("⏹ STOP", callback_data="stand")
             ]
-        ])
+        ]
+        if game.can_split(game.get_current_player_id()):
+            buttons.append([InlineKeyboardButton("✂️ SPLIT", callback_data="split")])
+        keyboard = InlineKeyboardMarkup(buttons)
+
     try:
         # D'abord envoyer/mettre à jour le message principal du jeu
         if game.game_status == 'finished':
@@ -1197,20 +1221,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     chat_id = update.effective_chat.id
 
-    if query.data.startswith("admin_"):
-        if not is_admin(user.id):
-            await query.answer("❌ Action réservée aux administrateurs!", show_alert=True)
-            return
-            
-        _, action, host_id = query.data.split("_")
-        host_id = int(host_id)
-        
-        if host_id not in active_games:
-            await query.answer("❌ Cette partie n'existe plus!", show_alert=True)
-            return
-            
-        game = active_games[host_id]
-
     if query.data == "start_game":
         # Vérifier si l'utilisateur est le créateur de la partie
         game = None
@@ -1278,6 +1288,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             game_ended = game.next_player()
             await query.answer("⏹ Vous restez")
         
+        elif query.data == "split":
+            if game.split_hand(user.id):
+                await query.answer("✂️ Main séparée!")
+            else:
+                await query.answer("❌ Split impossible!")
+        
         # Mise à jour de l'affichage
         await display_game(update, context, game)
         
@@ -1306,7 +1322,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for game_id in list(active_games.keys()):  # Utiliser une copie de la liste des clés
                     if player_id in active_games[game_id].players:
                         del active_games[game_id]
-    
+
     except Exception as e:
         print(f"Error in button_handler: {e}")
         await query.answer("❌ Une erreur s'est produite!")
