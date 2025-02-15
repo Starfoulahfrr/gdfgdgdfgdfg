@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = " : - "
+TOKEN = "  :AAE- "
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -278,7 +278,12 @@ class MultiPlayerGame:
                     player_data['second_status'] = 'push'
                     db.update_game_result(player_id, player_data['bet'], 'push')
 
-
+class DiceGame:
+    def __init__(self, host_id, host_name, bet_amount):
+        self.host_id = host_id
+        self.host_name = host_name
+        self.bet_amount = bet_amount
+        self.game_type = 'dice'
 class DatabaseManager:
     def __init__(self):
         self.conn = sqlite3.connect('blackjack.db', check_same_thread=False)
@@ -1252,7 +1257,102 @@ async def cmds(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    chat_id = update.effective_chat.id
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+
+    if chat_id not in active_games or message_id not in active_games[chat_id]:
+        await query.answer("❌ Cette partie n'existe plus!")
+        return
+
+    game = active_games[chat_id][message_id]
+
+    # Gestion des dés
+    if hasattr(game, 'game_type') and game.game_type == 'dice':
+        if query.data == "join_dice":
+            if user.id == game.host_id:
+                await query.answer("❌ Vous ne pouvez pas rejoindre votre propre pari!")
+                return
+
+            # Vérifier le solde
+            conn = sqlite3.connect('casino.db')
+            c = conn.cursor()
+            
+            # Vérifier si l'utilisateur existe, sinon le créer
+            c.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
+            result = c.fetchone()
+            if result is None:
+                c.execute("INSERT INTO users (user_id, balance) VALUES (?, 1000)", (user.id,))
+                conn.commit()
+                balance = 1000
+            else:
+                balance = result[0]
+
+            if balance < game.bet_amount:
+                await query.answer(f"❌ Solde insuffisant! (Solde: {balance} coins)")
+                conn.close()
+                return
+
+            # Déterminer le gagnant
+            is_pile = random.choice([True, False])
+            is_host_winner = random.choice([True, False])
+
+            if is_host_winner:
+                winner_id = game.host_id
+                winner_name = game.host_name
+                loser_id = user.id
+                loser_name = user.first_name
+            else:
+                winner_id = user.id
+                winner_name = user.first_name
+                loser_id = game.host_id
+                loser_name = game.host_name
+
+            # Mise à jour des soldes et statistiques
+            c.execute("UPDATE users SET balance = balance - ?, games_played = games_played + 1 WHERE user_id = ?", 
+                     (game.bet_amount, loser_id))
+            c.execute("UPDATE users SET balance = balance + ?, games_played = games_played + 1, games_won = games_won + 1 WHERE user_id = ?", 
+                     (game.bet_amount, winner_id))
+            
+            conn.commit()
+
+            # Obtenir les nouveaux soldes
+            c.execute("SELECT balance FROM users WHERE user_id = ?", (winner_id,))
+            winner_balance = c.fetchone()[0]
+            c.execute("SELECT balance FROM users WHERE user_id = ?", (loser_id,))
+            loser_balance = c.fetchone()[0]
+            
+            conn.close()
+
+            # Afficher le résultat
+            await query.message.edit_text(
+                f"🎲 *RÉSULTAT DU PARI* 🎲\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"{'🦅 PILE!' if is_pile else '👾 FACE!'}\n\n"
+                f"*GAGNANT* 🏆\n"
+                f"{winner_name} (+{game.bet_amount} coins)\n"
+                f"💰 Nouveau solde: {winner_balance} coins\n\n"
+                f"*PERDANT* 💀\n"
+                f"{loser_name} (-{game.bet_amount} coins)\n"
+                f"💰 Nouveau solde: {loser_balance} coins",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            del active_games[chat_id][message_id]
+            if not active_games[chat_id]:
+                del active_games[chat_id]
+            await query.answer()
+            return
+
+        elif query.data == "cancel_dice":
+            if user.id == game.host_id:
+                del active_games[chat_id][message_id]
+                if not active_games[chat_id]:
+                    del active_games[chat_id]
+                await query.message.edit_text("❌ Pari annulé", parse_mode=ParseMode.MARKDOWN)
+            else:
+                await query.answer("❌ Seul le créateur peut annuler le pari!")
+            await query.answer()
+            return
 
     if query.data.startswith("admin_"):
         if not is_admin(user.id):
@@ -1405,6 +1505,73 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error in button_handler: {e}")
         await query.answer("❌ Une erreur s'est produite!")
+
+async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+
+    # Vérifier si l'utilisateur existe dans la base de données
+    conn = sqlite3.connect('casino.db')
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
+    result = c.fetchone()
+    if result is None:
+        c.execute("INSERT INTO users (user_id, balance) VALUES (?, 1000)", (user.id,))
+        conn.commit()
+        balance = 1000
+    else:
+        balance = result[0]
+
+    # Vérifier si l'utilisateur a déjà un pari en cours
+    if chat_id in active_games:
+        for game in active_games[chat_id].values():
+            if hasattr(game, 'game_type') and game.game_type == 'dice' and game.host_id == user.id:
+                await update.message.reply_text("❌ Vous avez déjà un pari en cours!")
+                return
+
+    try:
+        bet_amount = int(context.args[0])
+    except (IndexError, ValueError):
+        await update.message.reply_text(
+            "❌ Veuillez spécifier une mise valide.\n"
+            "Usage: `/dice [mise]`\n"
+            "Exemple: `/dice 100`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    if bet_amount < 10 or bet_amount > 1000000:
+        await update.message.reply_text("❌ La mise doit être entre 10 et 1000000 coins.")
+        return
+
+    balance = db.get_balance(user.id)
+    if balance < bet_amount:
+        await update.message.reply_text(
+            f"❌ Solde insuffisant!\n"
+            f"Votre solde: {balance} coins"
+        )
+        return
+
+    keyboard = [[
+        InlineKeyboardButton("✅ Participer", callback_data="join_dice"),
+        InlineKeyboardButton("❌ Annuler", callback_data="cancel_dice")
+    ]]
+
+    message = await update.message.reply_text(
+        f"🎲 *NOUVEAU PARI* 🎲\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"👤 Créateur: {user.first_name}\n"
+        f"💰 Mise: {bet_amount} coins\n"
+        f"🎯 Gain potentiel: {bet_amount * 2} coins\n"
+        f"⏳ Expire dans: 5 minutes",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    if chat_id not in active_games:
+        active_games[chat_id] = {}
+    
+    active_games[chat_id][message.message_id] = DiceGame(user.id, user.first_name, bet_amount)
 
 async def error_handler(update: Update, context):
     print(f"An error occurred: {context.error}")  # Debug log
@@ -1814,6 +1981,7 @@ def main():
         application.add_handler(CommandHandler("bj", create_game))
         application.add_handler(CommandHandler("setcredits", set_credits))
         application.add_handler(CommandHandler("addcredits", add_credits))
+        application.add_handler(CommandHandler("dice", dice_command))
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
 
