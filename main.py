@@ -35,7 +35,7 @@ game_logger.addHandler(file_handler)
 
 # Variables globales
 ADMIN_USERS = [5277718388, 5909979625]  # Remplacez par vos IDs admin
-TOKEN = "77190476"  # Remplacez par votre token
+TOKEN = "77190"  # Remplacez par votre token
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 DAILY_AMOUNT = 1000
@@ -266,44 +266,27 @@ class DatabaseManager:
 db = DatabaseManager()
 
 class Card:
-    def __init__(self, rank: str, suit: str):
-        self.rank = rank
+    def __init__(self, suit: str, rank: str):
         self.suit = suit
-        
-    def __str__(self) -> str:
-        suits = {'♠': '♠️', '♥': '♥️', '♦': '♦️', '♣': '♣️'}
-        return f"{self.rank}{suits[self.suit]}"
+        self.rank = rank  # Le rang comme reçu du paquet
 
-    def get_value(self) -> List[int]:
-        """Retourne les valeurs possibles de la carte"""
-        if self.rank in ['J', 'Q', 'K']:
-            return [10]
-        elif self.rank == 'A':
-            return [1, 11]
-        else:
-            return [int(self.rank)]
+    def __str__(self):
+        return f"{self.rank}{self.suit}"
 
-class Deck:
-    def __init__(self):
-        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-        suits = ['♠', '♥', '♦', '♣']
-        self.cards = [Card(rank, suit) for rank in ranks for suit in suits]
-        self.shuffle()
-    
-    def shuffle(self):
-        """Mélange le deck"""
-        random.shuffle(self.cards)
-    
-    def deal(self) -> Optional[Card]:
-        """Distribue une carte, recrée un deck si vide"""
-        if not self.cards:
-            self.__init__()
-        return self.cards.pop() if self.cards else None
+    def get_value(self) -> int:
+        """Retourne la valeur numérique de la carte"""
+        values = {
+            'A': 1,
+            '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
+            '7': 7, '8': 8, '9': 9, '10': 10,
+            'J': 10, 'Q': 10, 'K': 10
+        }
+        return values.get(self.rank, 0)
 
 class Hand:
-    def __init__(self, bet: int = 0):  # On rend le paramètre bet optionnel avec une valeur par défaut
+    def __init__(self, bet: int = 0):
         self.cards = []
-        self.status = 'playing'  # 'playing', 'stand', 'bust', 'blackjack', 'win', 'lose', 'push'
+        self.status = 'playing'
         self.bet = bet
         self.timeout = None
 
@@ -318,12 +301,10 @@ class Hand:
         aces = 0
         
         for card in self.cards:
-            if card.value == 1:  # As
+            if card.rank == 'A':  # As
                 aces += 1
-            elif card.value > 10:  # Valet, Dame, Roi
-                value += 10
             else:
-                value += card.value
+                value += card.get_value()
         
         # Gérer les As (1 ou 11)
         for _ in range(aces):
@@ -333,6 +314,24 @@ class Hand:
                 value += 1
                 
         return value
+
+class Deck:
+    def __init__(self):
+        self.cards = []
+        suits = ['♠', '♥', '♦', '♣']
+        ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+        
+        for suit in suits:
+            for rank in ranks:
+                self.cards.append(Card(suit, rank))
+
+    def shuffle(self):
+        random.shuffle(self.cards)
+
+    def deal(self) -> Optional[Card]:
+        if not self.cards:
+            return None
+        return self.cards.pop()
         
 class MultiPlayerGame:
     def __init__(self, host_id: int, host_name: str):
@@ -391,6 +390,36 @@ class MultiPlayerGame:
         self.current_hand_idx = 0
         return True
 
+    def check_timeout(self) -> bool:
+        """Vérifie si le joueur actuel a dépassé son temps de jeu"""
+        if self.game_status != 'playing':
+            return False
+
+        current_hand = self.get_current_hand()
+        if not current_hand:
+            return False
+
+        # Si plus de timeout_duration secondes se sont écoulées
+        if time.time() - self.last_action_time > self.timeout_duration:
+            # Force le stand pour le joueur actuel
+            player_id = self.get_current_player_id()
+            if player_id:
+                self.stand(player_id)
+            return True
+            
+        return False
+
+    def update_last_action(self):
+        """Met à jour le timestamp de la dernière action"""
+        self.last_action_time = time.time()
+
+    # Mettre à jour les méthodes hit, stand et split pour reset le timer
+    def hit(self, player_id: int) -> bool:
+        result = super().hit(player_id)
+        if result:
+            self.update_last_action()
+        return result
+
     def get_current_player_id(self) -> Optional[int]:
         """Obtient l'ID du joueur actuel"""
         if self.game_status != 'playing':
@@ -447,9 +476,10 @@ class MultiPlayerGame:
         return True
 
     def stand(self, player_id: int) -> bool:
-        """Le joueur reste sur sa main actuelle"""
-        if not self.is_player_turn(player_id):
-            return False
+        result = super().stand(player_id)
+        if result:
+            self.update_last_action()
+        return result
             
         current_hand = self.get_current_hand()
         if not current_hand or current_hand.status != 'playing':
@@ -462,17 +492,19 @@ class MultiPlayerGame:
         """Vérifie si le joueur peut splitter sa main"""
         if not self.is_player_turn(player_id):
             return False
-            
+        
         current_hand = self.get_current_hand()
         if not current_hand or len(current_hand.cards) != 2:
             return False
-            
-        return current_hand.cards[0].value == current_hand.cards[1].value
+        
+        # Utiliser get_value() au lieu de value
+        return current_hand.cards[0].get_value() == current_hand.cards[1].get_value()
 
     def split_hand(self, player_id: int) -> bool:
-        """Splitte la main actuelle en deux"""
-        if not self.can_split(player_id):
-            return False
+        result = super().split_hand(player_id)
+        if result:
+            self.update_last_action()
+        return result
             
         current_hand = self.get_current_hand()
         bet = current_hand.bet
@@ -771,6 +803,12 @@ def calculate_game_stats(game):
     
     return stats
 
+async def check_timeouts(context: ContextTypes.DEFAULT_TYPE):
+    """Vérifie les timeouts des parties en cours"""
+    for game in active_games.values():
+        if game.game_status == 'playing' and game.check_timeout():
+            await display_game(None, context, game) 
+
 async def format_player_results(context, player_id, game):
     """Format les résultats finaux d'un joueur"""
     try:
@@ -926,31 +964,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         help_text,
         parse_mode=ParseMode.MARKDOWN
     )
-
-async def check_timeouts(context: ContextTypes.DEFAULT_TYPE):
-    """Vérifie les timeouts des parties en cours"""
-    games_to_check = list(active_games.items())
-    for game_id, game in games_to_check:
-        if game.game_status == 'playing' and game.check_timeout():
-            try:
-                current_player_id = game.get_current_player_id()
-                if current_player_id:
-                    current_hand = game.get_current_hand()
-                    if current_hand and current_hand.status == 'playing':
-                        current_hand.status = 'stand'
-                        game_ended = game.next_hand()
-                        
-                        if game_ended:
-                            game.game_status = 'finished'
-                            game.resolve_dealer()
-                            game.determine_winners()
-                        
-                        # Créer un faux update pour display_game
-                        dummy_update = Update(0, None)
-                        await display_game(dummy_update, context, game)
-                        
-            except Exception as e:
-                game_logger.error(f"Error in check_timeouts: {e}")
 
 async def update_leaderboard(context: ContextTypes.DEFAULT_TYPE):
     """Met à jour le message du classement"""
