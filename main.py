@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "  :AAE- "
+TOKEN = " :AAE- "
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -279,11 +279,12 @@ class MultiPlayerGame:
                     db.update_game_result(player_id, player_data['bet'], 'push')
 
 class DiceGame:
-    def __init__(self, host_id, host_name, bet_amount):
+    def __init__(self, host_id: int, host_name: str, bet_amount: int):
         self.host_id = host_id
         self.host_name = host_name
         self.bet_amount = bet_amount
         self.game_type = 'dice'
+
 class DatabaseManager:
     def __init__(self):
         self.conn = sqlite3.connect('blackjack.db', check_same_thread=False)
@@ -1273,23 +1274,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("❌ Vous ne pouvez pas rejoindre votre propre pari!")
                 return
 
-            # Vérifier le solde
-            conn = sqlite3.connect('casino.db')
-            c = conn.cursor()
-            
-            # Vérifier si l'utilisateur existe, sinon le créer
-            c.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
-            result = c.fetchone()
-            if result is None:
-                c.execute("INSERT INTO users (user_id, balance) VALUES (?, 1000)", (user.id,))
-                conn.commit()
-                balance = 1000
-            else:
-                balance = result[0]
+            if not db.user_exists(user.id):
+                db.register_user(user.id, user.first_name)
 
+            balance = db.get_balance(user.id)
             if balance < game.bet_amount:
                 await query.answer(f"❌ Solde insuffisant! (Solde: {balance} coins)")
-                conn.close()
                 return
 
             # Déterminer le gagnant
@@ -1307,23 +1297,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 loser_id = game.host_id
                 loser_name = game.host_name
 
-            # Mise à jour des soldes et statistiques
-            c.execute("UPDATE users SET balance = balance - ?, games_played = games_played + 1 WHERE user_id = ?", 
-                     (game.bet_amount, loser_id))
-            c.execute("UPDATE users SET balance = balance + ?, games_played = games_played + 1, games_won = games_won + 1 WHERE user_id = ?", 
-                     (game.bet_amount, winner_id))
-            
-            conn.commit()
+            # Mettre à jour les résultats via le DatabaseManager
+            db.update_game_result(winner_id, game.bet_amount, 'win')  # Le gagnant gagne
+            db.update_game_result(loser_id, game.bet_amount, 'lose')  # Le perdant perd
 
             # Obtenir les nouveaux soldes
-            c.execute("SELECT balance FROM users WHERE user_id = ?", (winner_id,))
-            winner_balance = c.fetchone()[0]
-            c.execute("SELECT balance FROM users WHERE user_id = ?", (loser_id,))
-            loser_balance = c.fetchone()[0]
-            
-            conn.close()
+            winner_balance = db.get_balance(winner_id)
+            loser_balance = db.get_balance(loser_id)
 
-            # Afficher le résultat
             await query.message.edit_text(
                 f"🎲 *RÉSULTAT DU PARI* 🎲\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -1510,24 +1491,9 @@ async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
 
-    # Vérifier si l'utilisateur existe dans la base de données
-    conn = sqlite3.connect('casino.db')
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
-    result = c.fetchone()
-    if result is None:
-        c.execute("INSERT INTO users (user_id, balance) VALUES (?, 1000)", (user.id,))
-        conn.commit()
-        balance = 1000
-    else:
-        balance = result[0]
-
-    # Vérifier si l'utilisateur a déjà un pari en cours
-    if chat_id in active_games:
-        for game in active_games[chat_id].values():
-            if hasattr(game, 'game_type') and game.game_type == 'dice' and game.host_id == user.id:
-                await update.message.reply_text("❌ Vous avez déjà un pari en cours!")
-                return
+    # Vérifie si l'utilisateur existe, sinon l'enregistre
+    if not db.user_exists(user.id):
+        db.register_user(user.id, user.first_name)
 
     try:
         bet_amount = int(context.args[0])
@@ -1570,7 +1536,6 @@ async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id not in active_games:
         active_games[chat_id] = {}
-    
     active_games[chat_id][message.message_id] = DiceGame(user.id, user.first_name, bet_amount)
 
 async def error_handler(update: Update, context):
