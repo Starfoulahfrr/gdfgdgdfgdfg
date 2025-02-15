@@ -129,6 +129,7 @@ class MultiPlayerGame:
             return True
         return False
 
+
     def calculate_hand(self, hand):
         """Calcule la valeur d'une main"""
         if not hand:
@@ -1198,6 +1199,117 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
 
     except Exception as e:
         print(f"Error in display_game: {e}")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = update.effective_chat.id
+
+    if query.data == "start_game":
+        # Vérifier si l'utilisateur est le créateur de la partie
+        game = None
+        for g in active_games.values():
+            if g.host_id == user.id and g.game_status == 'waiting':
+                game = g
+                break
+        
+        if not game:
+            await query.answer("❌ Vous n'êtes pas le créateur de cette partie!")
+            return
+            
+        if len(game.players) < 1:
+            await query.answer("❌ Il faut au moins 1 joueur pour commencer!")
+            return
+            
+        # Démarrer la partie
+        if game.start_game():
+            if user.id in waiting_games:
+                waiting_games.remove(user.id)
+            await display_game(update, context, game)
+            await query.answer("✅ La partie commence!")
+        else:
+            await query.answer("❌ Impossible de démarrer la partie!")
+        return
+    
+    # Trouver la partie active
+    game = None
+    for g in active_games.values():
+        if user.id in g.players:
+            game = g
+            break
+    
+    if not game:
+        await query.answer("❌ Aucune partie trouvée!")
+        return
+    
+    current_player_id = game.get_current_player_id()
+    if current_player_id != user.id:
+        await query.answer("❌ Ce n'est pas votre tour!")
+        return
+    
+    player_data = game.players[user.id]
+    game_ended = False
+    
+    try:
+        if query.data == "hit":
+            new_card = game.deck.deal()
+            player_data['hand'].append(new_card)
+            total = game.calculate_hand(player_data['hand'])
+    
+            if total > 21:
+                player_data['status'] = 'bust'
+                game_ended = game.next_player()
+                await query.answer("💥 Vous avez dépassé 21!")
+            elif total == 21:  # Ajoutez cette condition
+                player_data['status'] = 'blackjack'
+                game_ended = game.next_player()
+                await query.answer("🌟 Blackjack!")
+            else:
+                await query.answer(f"🎯 Total: {total}")
+        
+        elif query.data == "stand":
+            player_data['status'] = 'stand'
+            game_ended = game.next_player()
+            await query.answer("⏹ Vous restez")
+        
+        elif query.data == "split":
+            if game.split_hand(user.id):
+                await query.answer("✂️ Main séparée!")
+            else:
+                await query.answer("❌ Split impossible!")
+        
+        # Mise à jour de l'affichage
+        await display_game(update, context, game)
+        
+        # Si la partie est terminée
+        if game_ended:
+            # Mémoriser tous les joueurs de cette partie
+            players_in_game = list(game.players.keys())
+            host_id = game.host_id
+            
+            # Nettoyer toutes les références à la partie
+            if host_id in active_games:
+                del active_games[host_id]
+            if host_id in waiting_games:
+                waiting_games.remove(host_id)
+            if chat_id in game_messages:
+                del game_messages[chat_id]
+            
+            # Nettoyer chaque joueur des parties actives
+            for player_id in players_in_game:
+                for game_id in list(active_games.keys()):  # Utiliser une copie de la liste des clés
+                    if player_id in active_games[game_id].players:
+                        del active_games[game_id]
+            
+            # Nettoyer chaque joueur des parties actives
+            for player_id in players_in_game:
+                for game_id in list(active_games.keys()):  # Utiliser une copie de la liste des clés
+                    if player_id in active_games[game_id].players:
+                        del active_games[game_id]
+
+    except Exception as e:
+        print(f"Error in button_handler: {e}")
+        await query.answer("❌ Une erreur s'est produite!")
 
 async def cmds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     commands_text = (
