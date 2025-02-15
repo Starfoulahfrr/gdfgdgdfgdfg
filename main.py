@@ -16,6 +16,7 @@ CLASSEMENT_MESSAGE_ID = None
 CLASSEMENT_CHAT_ID = None
 last_game_message = {}  # {chat_id: message_id}
 last_end_game_message = {}  # {chat_id: message_id}
+dice_games = {}
 
 # Configuration du logging
 logging.basicConfig(
@@ -25,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719047"
+TOKEN = "771904"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1791,6 +1792,203 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     print(f"Erreur dans check_game_timeouts: {e}")
 
+async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Commande pour démarrer une partie de dés 1v1
+    Usage: /dice montant"""
+    
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    
+    # Vérifier si une partie est déjà en cours dans ce chat
+    if chat_id in dice_games:
+        await update.message.reply_text("❌ Une partie est déjà en cours dans ce chat.")
+        return
+        
+    try:
+        # Vérifier le format de la commande
+        if len(context.args) != 1:
+            await update.message.reply_text(
+                "❌ Usage incorrect.\n"
+                "Usage: `/dice montant`\n"
+                "Exemple: `/dice 100`",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+            
+        # Récupérer et valider le montant
+        bet = int(context.args[0])
+        
+        if bet < 10:
+            await update.message.reply_text("❌ La mise minimum est de 10 💵")
+            return
+            
+        if bet > 50000:
+            await update.message.reply_text("❌ La mise maximum est de 50 000 💵")
+            return
+            
+        # Vérifier le solde du joueur
+        balance = db.get_balance(user.id)
+        
+        if balance < bet:
+            await update.message.reply_text(
+                f"❌ Fonds insuffisants\n"
+                f"└ Solde: {balance} 💵"
+            )
+            return
+            
+        # Créer le bouton pour rejoindre
+        keyboard = [[InlineKeyboardButton("Rejoindre la partie 🎲", callback_data=f"join_dice_{bet}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Enregistrer la partie
+        dice_games[chat_id] = {
+            'host': user,
+            'bet': bet,
+            'message_id': None  # Sera mis à jour après l'envoi
+        }
+        
+        # Envoyer le message d'invitation
+        message = await update.message.reply_text(
+            f"🎲 *Nouvelle partie de dés*\n"
+            f"├ Créée par: @{user.username if user.username else user.first_name}\n"
+            f"├ Mise: {bet} 💵\n"
+            f"└ En attente d'un adversaire...",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Mettre à jour l'ID du message
+        dice_games[chat_id]['message_id'] = message.message_id
+        
+        # Supprimer la partie après 60 secondes si personne ne rejoint
+        asyncio.create_task(cancel_game_after_delay(chat_id, message.message_id))
+        
+    except ValueError:
+        await update.message.reply_text("❌ Le montant doit être un nombre valide.")
+    except Exception as e:
+        print(f"Error in dice: {e}")
+        await update.message.reply_text("❌ Une erreur s'est produite.")
+
+async def cancel_game_after_delay(chat_id: int, message_id: int):
+    """Annule une partie après un délai si personne ne rejoint"""
+    await asyncio.sleep(60)
+    if chat_id in dice_games and dice_games[chat_id]['message_id'] == message_id:
+        del dice_games[chat_id]
+
+async def handle_dice_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère quand un joueur rejoint une partie de dés"""
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat_id
+    
+    try:
+        # Extraire le montant de la mise
+        bet = int(query.data.split('_')[2])
+        
+        # Vérifier si la partie existe toujours
+        if chat_id not in dice_games:
+            await query.answer("❌ Cette partie n'existe plus.", show_alert=True)
+            await query.message.edit_reply_markup(reply_markup=None)
+            return
+            
+        game = dice_games[chat_id]
+        
+        # Vérifier que ce n'est pas l'hôte qui rejoint
+        if user.id == game['host'].id:
+            await query.answer("❌ Vous ne pouvez pas rejoindre votre propre partie!", show_alert=True)
+            return
+            
+        # Vérifier le solde du joueur
+        balance = db.get_balance(user.id)
+        
+        if balance < bet:
+            await query.answer("❌ Fonds insuffisants!", show_alert=True)
+            return
+            
+        # Supprimer les boutons
+        await query.message.edit_reply_markup(reply_markup=None)
+        
+        # Annoncer le début de la partie
+        await query.message.reply_text(
+            f"✅ *Partie commencée*\n"
+            f"🎲 {game['host'].username if game['host'].username else game['host'].first_name} VS {user.username if user.username else user.first_name}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Lancer les dés
+        host_dice = await query.message.reply_dice(emoji='🎲')
+        host_value = host_dice.dice.value
+        
+        await asyncio.sleep(4)  # Attendre que le premier dé s'arrête
+        
+        opponent_dice = await query.message.reply_dice(emoji='🎲')
+        opponent_value = opponent_dice.dice.value
+        
+        await asyncio.sleep(4)  # Attendre que le second dé s'arrête
+        
+        # Déterminer le gagnant
+        if host_value > opponent_value:
+            winner = game['host']
+            winner_value = host_value
+            loser = user
+            loser_value = opponent_value
+        elif opponent_value > host_value:
+            winner = user
+            winner_value = opponent_value
+            loser = game['host']
+            loser_value = host_value
+        else:
+            # En cas d'égalité, rembourser les mises
+            db.add_balance(game['host'].id, 0)
+            db.add_balance(user.id, 0)
+            await query.message.reply_text(
+                f"🎲 *Égalité!*\n"
+                f"├ {game['host'].username if game['host'].username else game['host'].first_name}: {host_value}\n"
+                f"├ {user.username if user.username else user.first_name}: {opponent_value}\n"
+                f"└ Les mises sont remboursées",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            del dice_games[chat_id]
+            return
+            
+        # Mettre à jour les soldes
+        db.add_balance(winner.id, bet)
+        db.add_balance(loser.id, -bet)
+        
+        # Annoncer le résultat
+        await query.message.reply_text(
+            f"🎲 *Résultat de la partie*\n"
+            f"├ {winner.username if winner.username else winner.first_name}: {winner_value}\n"
+            f"├ {loser.username if loser.username else loser.first_name}: {loser_value}\n"
+            f"├ Gagnant: {winner.username if winner.username else winner.first_name}\n"
+            f"└ Gains: +{bet} 💵",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Supprimer la partie
+        del dice_games[chat_id]
+        
+    except Exception as e:
+        print(f"Error in handle_dice_join: {e}")
+        await query.message.reply_text("❌ Une erreur s'est produite.")
+        if chat_id in dice_games:
+            del dice_games[chat_id]
+
+async def dice_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche les règles du jeu de dés"""
+    stats_text = (
+        "*🎲 Règles du jeu de dés 1v1*\n"
+        "├ Chaque joueur lance un dé\n"
+        "├ Le plus grand nombre gagne\n"
+        "├ Le gagnant remporte la mise de l'adversaire\n"
+        "└ En cas d'égalité, les mises sont remboursées\n\n"
+        "💡 *Autres informations*\n"
+        "├ Mise minimum : 10 💵\n"
+        "├ Mise maximum : 50 000 💵\n"
+        "└ Délai d'attente : 60 secondes"
+    )
+    
+    await update.message.reply_text(stats_text, parse_mode=ParseMode.MARKDOWN)
 def main():
     try:
         defaults = Defaults(parse_mode=ParseMode.MARKDOWN)
@@ -1814,6 +2012,9 @@ def main():
         application.add_handler(CommandHandler("bj", create_game))
         application.add_handler(CommandHandler("setcredits", set_credits))
         application.add_handler(CommandHandler("addcredits", add_credits))
+        application.add_handler(CommandHandler("dice", dice))
+        application.add_handler(CommandHandler("dicestats", dice_stats))
+        application.add_handler(CallbackQueryHandler(handle_dice_join, pattern="^join_dice_"))
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
 
