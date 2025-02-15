@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "771"
+TOKEN = "77190"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1085,7 +1085,6 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             status_icon = get_status_emoji(status)  # Assurez-vous d'utiliser le bon statut
             
             # Status et résultats
-            status_icon = "🎮"  # Défaut
             result_text = ""
 
             if game.game_status == 'finished':
@@ -1341,12 +1340,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'current_hand' not in player_data:
                 player_data['current_hand'] = 'hand'
             current_hand = player_data['current_hand']
+    
             if current_hand == 'hand' and 'second_hand' in player_data:
                 player_data['current_hand'] = 'second_hand'
-                player_data['status'] = 'playing'
+                player_data['status'] = 'stand'  # Marquer la première main comme terminée
                 await query.answer("⏹ Vous restez sur la première main, à la seconde")
             else:
-                player_data['status'] = 'stand'
+                if current_hand == 'second_hand':
+                    player_data['second_status'] = 'stand'  # Ajouter le statut pour la seconde main
+                else:
+                    player_data['status'] = 'stand'
                 game_ended = game.next_player()
                 await query.answer("⏹ Vous restez")
         
