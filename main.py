@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = "771"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1112,7 +1112,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
                 status_icon = "💥"
 
             game_text += (
-                f"{status_icon} *{user.first_name}* │ {cards}\n"
+                f"{status_icon} *{user.first_name}* │ {' '.join(str(card) for card in hand)}\n"  # Utiliser hand au lieu de cards
                 f"├ Total: {total}\n"
                 f"├ Mise: {player_data['bet']} 💵"
             )
