@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "77190"
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -231,10 +231,12 @@ class MultiPlayerGame:
             self.dealer_hand.append(self.deck.deal())
             
     def determine_winners(self):
+        """Tour du croupier"""
         dealer_total = self.calculate_hand(self.dealer_hand)
         dealer_bust = dealer_total > 21
-        
+    
         for player_id, player_data in self.players.items():
+            # Traiter la main principale
             if player_data['status'] == 'bust':
                 db.update_game_result(player_id, player_data['bet'], 'lose')
                 continue
@@ -243,7 +245,7 @@ class MultiPlayerGame:
                 continue
             elif player_data['status'] == 'stand':
                 player_total = self.calculate_hand(player_data['hand'])
-                
+            
                 if dealer_bust:
                     player_data['status'] = 'win'
                     db.update_game_result(player_id, player_data['bet'], 'win')
@@ -255,6 +257,25 @@ class MultiPlayerGame:
                     db.update_game_result(player_id, player_data['bet'], 'lose')
                 else:
                     player_data['status'] = 'push'
+                    db.update_game_result(player_id, player_data['bet'], 'push')
+        
+            # Traiter la seconde main si elle existe
+            if 'second_hand' in player_data:
+                second_total = self.calculate_hand(player_data['second_hand'])
+                if second_total > 21:
+                    player_data['second_status'] = 'bust'
+                    db.update_game_result(player_id, player_data['bet'], 'lose')
+                elif dealer_bust:
+                    player_data['second_status'] = 'win'
+                    db.update_game_result(player_id, player_data['bet'], 'win')
+                elif second_total > dealer_total:
+                    player_data['second_status'] = 'win'
+                    db.update_game_result(player_id, player_data['bet'], 'win')
+                elif second_total < dealer_total:
+                    player_data['second_status'] = 'lose'
+                    db.update_game_result(player_id, player_data['bet'], 'lose')
+                else:
+                    player_data['second_status'] = 'push'
                     db.update_game_result(player_id, player_data['bet'], 'push')
 
 
@@ -1055,8 +1076,13 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
         
         for index, hand in enumerate(hands):
             total = game.calculate_hand(hand)
-            status = player_data['status']
-            cards = ' '.join(str(card) for card in hand)
+            # Utiliser le bon statut selon la main
+            if index == 0:
+                status = player_data['status']
+            else:
+                status = player_data.get('second_status', 'playing')
+            
+            status_icon = get_status_emoji(status)  # Assurez-vous d'utiliser le bon statut
             
             # Status et résultats
             status_icon = "🎮"  # Défaut
