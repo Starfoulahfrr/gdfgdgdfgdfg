@@ -1253,7 +1253,83 @@ async def cmds(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    chat_id = update.effective_chat.id
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+
+    if chat_id not in active_games or message_id not in active_games[chat_id]:
+        await query.answer()
+        await query.message.edit_text("❌ Ce pari n'existe plus!")
+        return
+
+    game = active_games[chat_id][message_id]
+
+    # Gestion des jeux de dés
+    if hasattr(game, 'game_type') and game.game_type == 'dice':
+        if query.data == "join":
+            if user.id == game.host_id:
+                await query.answer("❌ Vous ne pouvez pas rejoindre votre propre pari!")
+                return
+
+            balance = db.get_balance(user.id)
+            if balance < game.bet_amount:
+                await query.answer(f"❌ Solde insuffisant! (Solde: {balance} coins)")
+                return
+
+            # Déterminer le gagnant
+            is_pile = random.choice([True, False])
+            is_host_winner = random.choice([True, False])
+
+            if is_host_winner:
+                winner_id = game.host_id
+                winner_name = game.host_name
+                loser_id = user.id
+                loser_name = user.first_name
+            else:
+                winner_id = user.id
+                winner_name = user.first_name
+                loser_id = game.host_id
+                loser_name = game.host_name
+
+            # Mettre à jour les soldes
+            db.update_game_result(winner_id, game.bet_amount, 'dice_win')
+            db.update_game_result(loser_id, game.bet_amount, 'lose')
+
+            winner_balance = db.get_balance(winner_id)
+            loser_balance = db.get_balance(loser_id)
+
+            await query.message.edit_text(
+                f"🎲 *RÉSULTAT DU PARI* 🎲\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"{'🦅 PILE!' if is_pile else '👾 FACE!'}\n\n"
+                f"*GAGNANT* 🏆\n"
+                f"{winner_name} (+{game.bet_amount} coins)\n"
+                f"💰 Nouveau solde: {winner_balance} coins\n\n"
+                f"*PERDANT* 💀\n"
+                f"{loser_name} (-{game.bet_amount} coins)\n"
+                f"💰 Nouveau solde: {loser_balance} coins",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            # Supprimer le jeu une fois terminé
+            if chat_id in active_games and message_id in active_games[chat_id]:
+                del active_games[chat_id][message_id]
+                if not active_games[chat_id]:
+                    del active_games[chat_id]
+
+            await query.answer()
+            return
+
+        elif query.data == "cancel":
+            if user.id == game.host_id or is_admin(user.id):
+                if chat_id in active_games and message_id in active_games[chat_id]:
+                    del active_games[chat_id][message_id]
+                    if not active_games[chat_id]:
+                        del active_games[chat_id]
+                await query.message.edit_text("❌ Pari annulé", parse_mode=ParseMode.MARKDOWN)
+            else:
+                await query.answer("❌ Seul le créateur peut annuler le pari!")
+            await query.answer()
+            return
 
     if query.data.startswith("admin_"):
         if not is_admin(user.id):
