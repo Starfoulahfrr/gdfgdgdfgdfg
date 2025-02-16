@@ -2,6 +2,7 @@ import logging
 import random
 import asyncio
 import sqlite3
+import pytz
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -12,6 +13,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 active_games = {}
 waiting_games = set()
 game_messages = {}
+CLASSEMENT_MESSAGE_ID = None  # Ajoutez cette ligne
+CLASSEMENT_CHAT_ID = None     # Ajoutez cette ligne
 last_game_message = {}  # {chat_id: message_id}
 last_end_game_message = {}  # {chat_id: message_id}
 
@@ -1045,7 +1048,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             game.resolve_dealer()
             game.determine_winners()
 
-    current_time = datetime.utcnow().strftime("%H:%M")
+    current_time = datetime.utcnow().strftime("%H:%M")/ban
 
     game_text = (
         "═══『 BLACKJACK 』═══\n\n"
@@ -1745,6 +1748,125 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     print(f"Erreur dans check_game_timeouts: {e}")
 
+async def update_classement_job(context: ContextTypes.DEFAULT_TYPE):
+    if CLASSEMENT_MESSAGE_ID is not None:
+        await classement(None, context)
+
+async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Affiche un classement des 200 meilleurs joueurs
+    Se met à jour automatiquement toutes les 5 minutes
+    Ne peut être lancé qu'une seule fois
+    """
+    global CLASSEMENT_MESSAGE_ID, CLASSEMENT_CHAT_ID
+    
+    # Vérifier si le classement existe déjà
+    if CLASSEMENT_MESSAGE_ID is not None:
+        try:
+            await update.message.reply_text(
+                "❌ Le classement est déjà actif dans un autre chat.\n"
+                "Il ne peut être affiché qu'à un seul endroit à la fois."
+            )
+        except Exception:
+            pass
+        return
+    
+    cursor = db.conn.cursor()
+    cursor.execute("""
+        SELECT username, balance 
+        FROM users 
+        ORDER BY balance DESC 
+        LIMIT 200
+    """)
+    
+    rankings = cursor.fetchall()
+    
+    paris_tz = pytz.timezone('Europe/Paris')
+    current_time = datetime.now(paris_tz).strftime("%Y-%m-%d %H:%M:%S")
+    
+    message = (
+        "🎯 *CLASSEMENT* 🎯\n"
+        "━━━━━━━━━━━━━━━\n\n"
+    )
+    
+    for i, (username, balance) in enumerate(rankings, 1):
+        # Obtenir le rang du joueur avec son emoji et son titre
+        emoji, rank_title, _, _ = db.get_player_rank(balance)
+        
+        # Médailles pour le podium
+        if i == 1:
+            medal = "👑"
+        elif i == 2:
+            medal = "🥈"
+        elif i == 3:
+            medal = "🥉"
+        elif i <= 10:
+            medal = "⭐"
+        else:
+            medal = "•"
+            
+        # Formater chaque entrée avec le nom du rang
+        message += (
+            f"{medal} *#{i}* {emoji} *{username}*\n"
+            f"├ {rank_title}\n"
+            f"└ {balance:,} 💵\n"
+        )
+        
+        # Ajouter un séparateur après le podium et top 10
+        if i in [3, 10]:
+            message += "━━━━━━━━━━━━━━━\n"
+        else:
+            message += "\n"
+            
+    # Ajouter le timestamp de mise à jour
+    message += f"\n⌚️ Mis à jour: {current_time} (Paris)"
+    
+    try:
+        # Si c'est une nouvelle commande (pas une mise à jour automatique)
+        if update and update.message:
+            # Vérifier si c'est un supergroupe
+            if update.effective_chat.type == "supergroup":
+                # Envoyer le nouveau message de classement
+                sent_message = await update.message.reply_text(
+                    message,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                CLASSEMENT_MESSAGE_ID = sent_message.message_id
+                CLASSEMENT_CHAT_ID = update.effective_chat.id
+                
+                # Informer que le classement a été créé avec succès
+                await update.message.reply_text(
+                    "✅ Le classement a été créé avec succès!\n"
+                    "Il se mettra à jour automatiquement toutes les 5 minutes.\n"
+                    "Cette commande ne peut plus être utilisée tant que le classement est actif."
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Cette commande doit être utilisée dans un supergroupe pour fonctionner correctement."
+                )
+        # Si c'est une mise à jour automatique
+        elif CLASSEMENT_MESSAGE_ID and CLASSEMENT_CHAT_ID:
+            await context.bot.edit_message_text(
+                chat_id=CLASSEMENT_CHAT_ID,
+                message_id=CLASSEMENT_MESSAGE_ID,
+                text=message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+    except Exception as e:
+        logger.error(f"Erreur mise à jour classement: {e}")
+
+async def reset_classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Commande admin pour réinitialiser le classement"""
+    global CLASSEMENT_MESSAGE_ID, CLASSEMENT_CHAT_ID
+    
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Cette commande est réservée aux administrateurs.")
+        return
+        
+    CLASSEMENT_MESSAGE_ID = None
+    CLASSEMENT_CHAT_ID = None
+    await update.message.reply_text("✅ Le classement a été réinitialisé.")
+
 def main():
     try:
         defaults = Defaults(parse_mode=ParseMode.MARKDOWN)
@@ -1767,9 +1889,14 @@ def main():
         application.add_handler(CommandHandler("bj", create_game))
         application.add_handler(CommandHandler("setcredits", set_credits))
         application.add_handler(CommandHandler("addcredits", add_credits))
+        application.add_handler(CommandHandler("reset_classement", reset_classement))
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
+        application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
+    
+
+        application.add_handler(CommandHandler("classement", classement))
         print("🎲 Blackjack Bot démarré !")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
