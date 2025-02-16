@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = " :AAE- "
+TOKEN = "7719"
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1048,7 +1048,7 @@ async def display_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game:
             game.resolve_dealer()
             game.determine_winners()
 
-    current_time = datetime.utcnow().strftime("%H:%M")/ban
+    current_time = (datetime.utcnow() + timedelta(hours=1)).strftime("%H:%M")
 
     game_text = (
         "═══『 BLACKJACK 』═══\n\n"
@@ -1756,7 +1756,6 @@ async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Affiche un classement des 200 meilleurs joueurs
     Se met à jour automatiquement toutes les 5 minutes
-    Ne peut être lancé qu'une seule fois
     """
     global CLASSEMENT_MESSAGE_ID, CLASSEMENT_CHAT_ID
     
@@ -1781,8 +1780,8 @@ async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     rankings = cursor.fetchall()
     
-    paris_tz = pytz.timezone('Europe/Paris')
-    current_time = datetime.now(paris_tz).strftime("%Y-%m-%d %H:%M:%S")
+    # Corriger l'heure pour qu'elle soit à l'heure française
+    current_time = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     
     message = (
         "🎯 *CLASSEMENT* 🎯\n"
@@ -1819,7 +1818,7 @@ async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += "\n"
             
     # Ajouter le timestamp de mise à jour
-    message += f"\n⌚️ Mis à jour: {current_time} (Paris)"
+    message += f"\n⌚️ Mis à jour: {current_time}"
     
     try:
         # Si c'est une nouvelle commande (pas une mise à jour automatique)
@@ -1833,13 +1832,6 @@ async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 CLASSEMENT_MESSAGE_ID = sent_message.message_id
                 CLASSEMENT_CHAT_ID = update.effective_chat.id
-                
-                # Informer que le classement a été créé avec succès
-                await update.message.reply_text(
-                    "✅ Le classement a été créé avec succès!\n"
-                    "Il se mettra à jour automatiquement toutes les 5 minutes.\n"
-                    "Cette commande ne peut plus être utilisée tant que le classement est actif."
-                )
             else:
                 await update.message.reply_text(
                     "❌ Cette commande doit être utilisée dans un supergroupe pour fonctionner correctement."
@@ -1893,7 +1885,7 @@ def main():
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
-        application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
+        application.job_queue.run_repeating(update_classement_job, interval=60)  # 300 secondes = 5 minutes
     
 
         application.add_handler(CommandHandler("classement", classement))
