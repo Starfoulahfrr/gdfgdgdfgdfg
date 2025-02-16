@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ADMIN_USERS = [5277718388, 5909979625]
-TOKEN = "7719"
+TOKEN = " : - "
 INITIAL_BALANCE = 1500
 MAX_PLAYERS = 2000
 game_messages = {}  # Pour stocker l'ID du message de la partie en cours
@@ -1749,8 +1749,61 @@ async def check_game_timeouts(context: ContextTypes.DEFAULT_TYPE):
                     print(f"Erreur dans check_game_timeouts: {e}")
 
 async def update_classement_job(context: ContextTypes.DEFAULT_TYPE):
-    if CLASSEMENT_MESSAGE_ID is not None:
-        await classement(None, context)
+    """Met à jour automatiquement le classement"""
+    if CLASSEMENT_MESSAGE_ID is not None and CLASSEMENT_CHAT_ID is not None:
+        cursor = db.conn.cursor()
+        cursor.execute("""
+            SELECT username, balance 
+            FROM users 
+            ORDER BY balance DESC 
+            LIMIT 200
+        """)
+        
+        rankings = cursor.fetchall()
+        current_time = (datetime.utcnow() + timedelta(hours=1)).strftime("%H:%M")
+
+        
+        message = (
+            "🎯 *CLASSEMENT* 🎯\n"
+            "━━━━━━━━━━━━━━━\n\n"
+        )
+        
+        for i, (username, balance) in enumerate(rankings, 1):
+            emoji, rank_title, _, _ = db.get_player_rank(balance)
+            
+            if i == 1:
+                medal = "👑"
+            elif i == 2:
+                medal = "🥈"
+            elif i == 3:
+                medal = "🥉"
+            elif i <= 10:
+                medal = "⭐"
+            else:
+                medal = "•"
+                
+            message += (
+                f"{medal} *#{i}* {emoji} *{username}*\n"
+                f"├ {rank_title}\n"
+                f"└ {balance:,} 💵\n"
+            )
+            
+            if i in [3, 10]:
+                message += "━━━━━━━━━━━━━━━\n"
+            else:
+                message += "\n"
+                
+        message += f"\n⌚️ Mis à jour: {current_time}"
+        
+        try:
+            await context.bot.edit_message_text(
+                chat_id=CLASSEMENT_CHAT_ID,
+                message_id=CLASSEMENT_MESSAGE_ID,
+                text=message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            logger.error(f"Erreur mise à jour classement: {e}")
 
 async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1781,7 +1834,8 @@ async def classement(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rankings = cursor.fetchall()
     
     # Corriger l'heure pour qu'elle soit à l'heure française
-    current_time = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    current_time = (datetime.utcnow() + timedelta(hours=1)).strftime("%H:%M")
+
     
     message = (
         "🎯 *CLASSEMENT* 🎯\n"
@@ -1885,7 +1939,7 @@ def main():
         application.add_handler(CallbackQueryHandler(button_handler))
         application.add_error_handler(error_handler)
         application.job_queue.run_repeating(check_game_timeouts, interval=5)  # Vérifie toutes les 5 secondes
-        application.job_queue.run_repeating(update_classement_job, interval=60)  # 300 secondes = 5 minutes
+        application.job_queue.run_repeating(update_classement_job, interval=300)  # 300 secondes = 5 minutes
     
 
         application.add_handler(CommandHandler("classement", classement))
